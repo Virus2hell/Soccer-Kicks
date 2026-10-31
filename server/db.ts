@@ -29,6 +29,8 @@ export class Db {
     if (fs.existsSync(file)) {
       this.data = JSON.parse(fs.readFileSync(file, 'utf8'));
     }
+    // Accounts made with an older version have no puck color yet
+    for (const user of Object.values(this.data.users)) user.profile.color ??= 'blue';
   }
 
   /** Writes to disk shortly after the last change */

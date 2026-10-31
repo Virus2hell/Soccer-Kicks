@@ -2,7 +2,7 @@
 // - friction that slows everything down as it slides
 // - impulse-based collisions between circles (heavier pucks push the light ball further)
 // - bounces off walls, goal posts and the goal net
-// - pucks may enter a goal, but one that goes in too deep gets thrown back out
+// - pucks may slide into a goal (the match rules move them back out once everything stops)
 // - goal detection when the whole ball crosses the goal line
 
 import type { Team } from './types';
@@ -32,7 +32,7 @@ export const GOAL_DEPTH = 70;
 export const GOAL_TOP = (FIELD_H - GOAL_MOUTH) / 2;
 export const GOAL_BOTTOM = GOAL_TOP + GOAL_MOUTH;
 
-export const PIECE_R = 38;
+export const PIECE_R = 42;
 export const BALL_R = 17;
 export const BLOCK_R = 26;
 export const POST_R = 8;
@@ -48,8 +48,6 @@ const BALL_FRICTION = 0.982;
 const LINEAR_DRAG = 0.025; // extra slowdown so things don't crawl forever
 const STOP_SPEED = 0.06;
 const SUBSTEPS = 4; // more = fewer bodies passing through each other
-const EJECT_DEPTH = 20; // a puck whose center goes this deep into a goal is thrown out
-const EJECT_SPEED = 10;
 
 export const POSTS = [
   { x: 0, y: GOAL_TOP },
@@ -94,6 +92,9 @@ export function step(bodies: Body[], frames: number, onCollide?: CollideFn): Tea
   return null;
 }
 
+/** A puck whose center is behind a goal line */
+export const isInGoal = (b: Body) => b.kind === 'piece' && (b.x < 0 || b.x > FIELD_W);
+
 export function isMoving(bodies: Body[]) {
   return bodies.some((b) => b.vx !== 0 || b.vy !== 0);
 }
@@ -107,12 +108,6 @@ function collideWalls(b: Body): Team | null {
     const depth = left ? -b.x : b.x - FIELD_W;
 
     if (b.kind === 'ball' && depth > b.r) return left ? 1 : 0;
-
-    if (b.kind === 'piece' && depth > EJECT_DEPTH) {
-      // Too deep: throw the puck back onto the field
-      b.vx = left ? EJECT_SPEED : -EJECT_SPEED;
-      b.vy *= 0.3;
-    }
 
     // Net: back wall + side walls
     if (depth + b.r > GOAL_DEPTH) {

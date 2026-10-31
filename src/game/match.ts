@@ -2,6 +2,7 @@
 // trick-shot shootout. Pure TypeScript, so the same code runs on the phone
 // (local matches) and on the server (online matches).
 
+import { PuckColorId, resolveColors } from './colors';
 import { FORMATIONS } from './formations';
 import {
   BALL_MASS,
@@ -15,6 +16,9 @@ import {
   GOAL_TOP,
   PIECE_MASS,
   PIECE_R,
+  POSTS,
+  POST_R,
+  isInGoal,
   isMoving,
   step,
 } from './physics';
@@ -38,6 +42,7 @@ export const KICK_RESULT_PAUSE = 1.8;
 export const SHOOTOUT_KICKS = 5;
 export const MIN_DRAG = 12;
 export const MAX_DRAG = 170;
+export const EJECT_SECONDS = 0.5; // how long a puck takes to slide out of a goal
 
 // A puck during one match (health resets to full every match)
 export type SquadPuck = {
@@ -52,6 +57,7 @@ export type SquadPuck = {
 
 export type Side = {
   name: string;
+  color: PuckColorId;
   formation: FormationId;
   squad: SquadPuck[];
   onField: string[]; // puck ids in formation slot order
@@ -63,6 +69,7 @@ export type Side = {
 export type Phase =
   | 'aim' // current player picks a puck and shoots
   | 'moving' // pucks are sliding
+  | 'eject' // everything stopped: pucks inside a goal slide back out
   | 'sub' // current player is making substitutions
   | 'goal' // goal celebration
   | 'so-keeper' // shootout: defender places the keeper
@@ -92,10 +99,13 @@ export type MatchState = {
   score: [number, number];
   lastTouch: string | null; // body id of the last puck that touched the ball
   goalInfo: { team: Team; scorer: string | null } | null;
+  ejects: Eject[];
   shootout: Shootout | null;
   winner: Team | null;
   wonOnShootout: boolean;
 };
+
+export type Eject = { id: string; fromX: number; fromY: number; toX: number; toY: number };
 
 export type MatchInput =
   | { type: 'shoot'; pieceId: string; dx: number; dy: number }
@@ -107,6 +117,7 @@ export type MatchInput =
 
 export type SideSetup = {
   name: string;
+  color: PuckColorId;
   formation: FormationId;
   pucks: PuckData[];
   lineup: string[];
@@ -140,7 +151,7 @@ export function actingTeam(state: MatchState): Team {
 // Setup
 // ---------------------------------------------------------------------------
 
-function createSide(setup: SideSetup): Side {
+function createSide(setup: SideSetup, color: PuckColorId): Side {
   const byId = new Map(setup.pucks.map((p) => [p.id, p]));
   const ordered = [
     ...setup.lineup.map((id) => byId.get(id)).filter((p): p is PuckData => !!p),
@@ -158,6 +169,7 @@ function createSide(setup: SideSetup): Side {
   const onField = squad.slice(0, 5).map((p) => p.id);
   return {
     name: setup.name,
+    color,
     formation: setup.formation,
     squad,
     onField,
@@ -168,9 +180,10 @@ function createSide(setup: SideSetup): Side {
 }
 
 export function createMatch(settings: MatchSettings, a: SideSetup, b: SideSetup): MatchState {
+  const [colorA, colorB] = resolveColors(a.color, b.color);
   const state: MatchState = {
     settings,
-    sides: [createSide(a), createSide(b)],
+    sides: [createSide(a, colorA), createSide(b, colorB)],
     bodies: [],
     phase: 'aim',
     turn: 0,
@@ -181,6 +194,7 @@ export function createMatch(settings: MatchSettings, a: SideSetup, b: SideSetup)
     score: [0, 0],
     lastTouch: null,
     goalInfo: null,
+    ejects: [],
     shootout: null,
     winner: null,
     wonOnShootout: false,
@@ -212,6 +226,7 @@ function kickoff(state: MatchState, team: Team) {
   bodies.push(makeBall(FIELD_W / 2, FIELD_H / 2));
   state.bodies = bodies;
   state.lastTouch = null;
+  state.ejects = [];
   startTurn(state, team);
 }
 
@@ -365,8 +380,29 @@ export function update(state: MatchState, frames: number, rng = Math.random) {
       const scorer = step(state.bodies, frames, collisionHandler(state));
       if (scorer !== null) onGoal(state, scorer);
       else if (!isMoving(state.bodies)) {
-        if (timeIsUp(state)) endRegulation(state, rng);
-        else startTurn(state, other(state.turn));
+        // Everything is still: pucks left inside a goal now slide back out
+        state.ejects = planEjects(state);
+        if (state.ejects.length > 0) {
+          state.phase = 'eject';
+          state.pause = 0;
+        } else afterShot(state, rng);
+      }
+      break;
+    }
+
+    case 'eject': {
+      tickClock(state, dt);
+      state.pause = Math.min(1, state.pause + dt / EJECT_SECONDS);
+      const t = 1 - Math.pow(1 - state.pause, 3); // ease-out
+      for (const e of state.ejects) {
+        const b = state.bodies.find((o) => o.id === e.id);
+        if (!b) continue;
+        b.x = e.fromX + (e.toX - e.fromX) * t;
+        b.y = e.fromY + (e.toY - e.fromY) * t;
+      }
+      if (state.pause >= 1) {
+        state.ejects = [];
+        afterShot(state, rng);
       }
       break;
     }
@@ -408,6 +444,42 @@ export function update(state: MatchState, frames: number, rng = Math.random) {
       if (state.pause <= 0) nextKick(state, rng);
       break;
   }
+}
+
+function afterShot(state: MatchState, rng: () => number) {
+  if (timeIsUp(state)) endRegulation(state, rng);
+  else startTurn(state, other(state.turn));
+}
+
+/** Finds a free spot just in front of the goal for every puck stuck inside one */
+function planEjects(state: MatchState): Eject[] {
+  const ejects: Eject[] = [];
+  const taken = state.bodies.filter((b) => !isInGoal(b)).map((b) => ({ x: b.x, y: b.y, r: b.r }));
+
+  for (const b of state.bodies.filter(isInGoal)) {
+    const left = b.x < 0;
+    const gap = b.r * 2 + 6;
+    let spot: { x: number; y: number } | null = null;
+
+    for (let col = 0; col < 6 && !spot; col++) {
+      const x = left ? b.r + POST_R + 6 + col * gap : FIELD_W - b.r - POST_R - 6 - col * gap;
+      for (let k = 0; k < 9 && !spot; k++) {
+        const offset = (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * (gap / 2);
+        const y = Math.min(FIELD_H - b.r, Math.max(b.r, b.y + offset));
+        const free =
+          taken.every((o) => Math.hypot(o.x - x, o.y - y) > o.r + b.r + 2) &&
+          POSTS.every((p) => Math.hypot(p.x - x, p.y - y) > POST_R + b.r + 2);
+        if (free) spot = { x, y };
+      }
+    }
+    spot ??= { x: left ? b.r + 20 : FIELD_W - b.r - 20, y: FIELD_H / 2 };
+
+    b.vx = 0;
+    b.vy = 0;
+    taken.push({ ...spot, r: b.r });
+    ejects.push({ id: b.id, fromX: b.x, fromY: b.y, toX: spot.x, toY: spot.y });
+  }
+  return ejects;
 }
 
 function onGoal(state: MatchState, team: Team) {
@@ -462,7 +534,7 @@ function setupKick(state: MatchState, rng: () => number) {
   const bodies: Body[] = [
     makeBall(ballX, ballY),
     makePiece(shooter, shooterPuck, ballX - 100, ballY + (rng() * 2 - 1) * 50),
-    makePiece(defender, keeperPuck, FIELD_W - 55, FIELD_H / 2),
+    makePiece(defender, keeperPuck, FIELD_W - 60, FIELD_H / 2),
   ];
 
   // Random fixed blocks between the ball and the goal

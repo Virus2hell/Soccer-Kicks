@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, COLORS, styles as ui } from '@/components/ui/kit';
+import { Split } from '@/components/ui/layout';
 import { describeSettings, SettingsPicker } from '@/components/ui/settings-picker';
 import type { MatchSettings } from '@/game/types';
 import { useAuth } from '@/lib/auth';
@@ -48,68 +49,77 @@ export default function OnlineScreen() {
   if (room) {
     const isHost = room.players[0] === profile?.username;
     return (
-      <ScrollView style={ui.screen} contentContainerStyle={ui.scroll}>
-        <Card style={{ alignItems: 'center' }}>
-          <Text style={ui.muted}>Room code — share it with your friend</Text>
-          <Text style={styles.code}>{room.code}</Text>
-          <Text style={ui.text}>{describeSettings(room.settings)}</Text>
-        </Card>
-
-        <Card>
-          <Text style={ui.sectionTitle}>Players</Text>
-          {[0, 1].map((i) => (
-            <View key={i} style={styles.player}>
-              <View style={[styles.dot, { backgroundColor: COLORS.team[i] }]} />
-              <Text style={[ui.text, { flex: 1, fontWeight: '800' }]}>{room.players[i] ?? 'Waiting for opponent…'}</Text>
-              <Text style={ui.muted}>{i === 0 ? 'Host · Blue' : 'Guest · Orange'}</Text>
-            </View>
-          ))}
-        </Card>
-
-        {!!error && <Text style={ui.error}>{error}</Text>}
-        {room.playing ? (
-          <Text style={ui.text}>Match in progress…</Text>
-        ) : isHost ? (
-          <Button title="Start match" onPress={() => run('start', 'room:start')} disabled={room.players.length < 2} loading={busy === 'start'} />
-        ) : (
-          <Text style={[ui.text, { textAlign: 'center' }]}>Waiting for the host to start…</Text>
-        )}
-        <Button title="Leave room" variant="secondary" onPress={() => run('leave', 'room:leave').then(() => setRoom(null))} />
-      </ScrollView>
+      <Split
+        left={
+          <Card style={{ alignItems: 'center' }}>
+            <Text style={ui.muted}>Room code — share it with your friend</Text>
+            <Text style={styles.code}>{room.code}</Text>
+            <Text style={ui.text}>{describeSettings(room.settings)}</Text>
+          </Card>
+        }
+        right={
+          <>
+            <Card>
+              <Text style={ui.sectionTitle}>Players</Text>
+              {[0, 1].map((i) => (
+                <View key={i} style={styles.player}>
+                  <Text style={styles.side}>{i === 0 ? 'LEFT' : 'RIGHT'}</Text>
+                  <Text style={[ui.text, { flex: 1, fontWeight: '800' }]}>{room.players[i] ?? 'Waiting for opponent…'}</Text>
+                  <Text style={ui.muted}>{i === 0 ? 'Host' : 'Guest'}</Text>
+                </View>
+              ))}
+            </Card>
+            {!!error && <Text style={ui.error}>{error}</Text>}
+            {room.playing ? (
+              <Text style={ui.text}>Match in progress…</Text>
+            ) : isHost ? (
+              <Button title="Start match" onPress={() => run('start', 'room:start')} disabled={room.players.length < 2} loading={busy === 'start'} />
+            ) : (
+              <Text style={[ui.text, { textAlign: 'center' }]}>Waiting for the host to start…</Text>
+            )}
+            <Button title="Leave room" variant="secondary" onPress={() => run('leave', 'room:leave').then(() => setRoom(null))} />
+          </>
+        }
+      />
     );
   }
 
   return (
-    <ScrollView style={ui.screen} contentContainerStyle={ui.scroll}>
-      <Card>
-        <Text style={ui.sectionTitle}>Host a match</Text>
-        <SettingsPicker value={settings} onChange={setSettings} />
-        <Button title="Create room" onPress={() => run('create', 'room:create', { settings })} loading={busy === 'create'} />
-      </Card>
-
-      <Card>
-        <Text style={ui.sectionTitle}>Join a match</Text>
-        <TextInput
-          style={[ui.input, styles.codeInput]}
-          value={code}
-          onChangeText={(t) => setCode(t.toUpperCase())}
-          placeholder="CODE"
-          placeholderTextColor={COLORS.muted}
-          autoCapitalize="characters"
-          maxLength={4}
-        />
-        <Button title="Join" onPress={() => run('join', 'room:join', { code })} disabled={code.length !== 4} loading={busy === 'join'} />
-      </Card>
-
-      {!!error && <Text style={ui.error}>{error}</Text>}
-      <Text style={ui.muted}>Both phones must reach the same server (same Wi-Fi, or a server hosted online).</Text>
-    </ScrollView>
+    <Split
+      leftFlex={1.3} rightFlex={1}
+      left={
+        <Card>
+          <Text style={ui.sectionTitle}>Host a match</Text>
+          <SettingsPicker value={settings} onChange={setSettings} />
+          <Button title="Create room" onPress={() => run('create', 'room:create', { settings })} loading={busy === 'create'} />
+        </Card>
+      }
+      right={
+        <>
+          <Card>
+            <Text style={ui.sectionTitle}>Join a match</Text>
+            <TextInput
+              style={[ui.input, styles.codeInput]}
+              value={code}
+              onChangeText={(t) => setCode(t.toUpperCase())}
+              placeholder="CODE"
+              placeholderTextColor={COLORS.muted}
+              autoCapitalize="characters"
+              maxLength={4}
+            />
+            <Button title="Join" onPress={() => run('join', 'room:join', { code })} disabled={code.length !== 4} loading={busy === 'join'} />
+          </Card>
+          {!!error && <Text style={ui.error}>{error}</Text>}
+          <Text style={ui.muted}>Both phones must reach the same server (same Wi-Fi, or a server hosted online).</Text>
+        </>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  code: { color: COLORS.gold, fontSize: 54, fontWeight: '900', letterSpacing: 10 },
+  code: { color: COLORS.gold, fontSize: 60, fontWeight: '900', letterSpacing: 12 },
   codeInput: { fontSize: 26, fontWeight: '900', letterSpacing: 8, textAlign: 'center' },
   player: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, backgroundColor: COLORS.cardLight },
-  dot: { width: 14, height: 14, borderRadius: 7 },
+  side: { color: COLORS.muted, fontSize: 10, fontWeight: '900', width: 40 },
 });

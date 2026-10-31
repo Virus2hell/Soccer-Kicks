@@ -10,6 +10,7 @@ import path from 'node:path';
 import { Server, Socket } from 'socket.io';
 
 import { Db } from './db';
+import { isPuckColor } from '../src/game/colors';
 import { FORMATION_IDS } from '../src/game/formations';
 import {
   MatchInput,
@@ -33,7 +34,7 @@ import {
 } from '../src/game/types';
 
 const PORT = Number(process.env.PORT ?? 3001);
-const SEND_EVERY_MS = 50; // 20 updates per second to the phones
+const SEND_EVERY_MS = 33; // ~30 updates per second to the phones
 
 const db = new Db(path.join(__dirname, 'data', 'db.json'));
 const httpServer = createServer((_req, res) => {
@@ -93,6 +94,7 @@ function validSettings(s: any): MatchSettings {
 
 const sideSetup = (p: Profile): SideSetup => ({
   name: p.username,
+  color: p.color,
   formation: p.formation,
   pucks: p.pucks,
   lineup: p.lineup,
@@ -290,6 +292,14 @@ io.on('connection', (socket) => {
     if (profile.coins < cost) throw new Error(`You need ${cost} coins`);
     profile.coins -= cost;
     puck.levels[stat as StatKey] = level + 1;
+    db.save();
+    return { profile };
+  });
+
+  handle(socket, 'profile:color', ({ color }) => {
+    const profile = me().profile;
+    if (!isPuckColor(color)) throw new Error('Unknown color');
+    profile.color = color;
     db.save();
     return { profile };
   });

@@ -1,19 +1,28 @@
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 
 import { COLORS } from '@/components/ui/kit';
 import { AuthProvider } from '@/lib/auth';
 
 export default function RootLayout() {
+  // The whole app runs in landscape
+  useEffect(() => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+  }, []);
+
   return (
     <AuthProvider>
-      <StatusBar style="light" />
+      <StatusBar style="light" hidden />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: COLORS.bg },
           headerTintColor: COLORS.text,
-          headerTitleStyle: { fontWeight: '800' },
+          headerTitleStyle: { fontWeight: '900' },
+          headerShadowVisible: false,
           contentStyle: { backgroundColor: COLORS.bg },
+          animation: 'fade',
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />

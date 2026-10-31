@@ -2,47 +2,56 @@
 // ^ The match state is mutated every frame, so React Compiler's automatic
 //   memoization must be switched off for this file.
 
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { GestureResponderEvent, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, SharedValue, ZoomIn, useAnimatedStyle, useFrameCallback, useSharedValue } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 
-import { CANVAS_H, CANVAS_W, Field } from '@/components/game/field';
-import { BallArt, BlockArt, PuckArt } from '@/components/game/puck-art';
+import { CANVAS_H, CANVAS_W, Field, ORIGIN_X, ORIGIN_Y } from '@/components/game/field';
+import { BallArt, BlockArt, PUCK_ART_SCALE, PuckArt } from '@/components/game/puck-art';
 import { Bar, Button, COLORS, healthColor } from '@/components/ui/kit';
+import { PUCK_COLORS, PuckColorId } from '@/game/colors';
 import {
-  KEEPER_SECONDS,
-  KICK_SECONDS,
   MAX_DRAG,
   MIN_DRAG,
   MatchInput,
   MatchState,
   SHOOTOUT_KICKS,
   SquadPuck,
-  TURN_SECONDS,
   actingTeam,
   eligibleBench,
   getSquadPuck,
 } from '@/game/match';
-import { Body, GOAL_DEPTH } from '@/game/physics';
+import type { Body, BodyKind } from '@/game/physics';
 import { aimLength, effectiveness } from '@/game/pucks';
 import type { Team } from '@/game/types';
+import type { PosBuffer } from '@/lib/use-match';
 
 type Props = {
   state: MatchState;
+  pos: SharedValue<PosBuffer>;
   canControl: (team: Team) => boolean;
   send: (input: MatchInput, team: Team) => void;
   onExit: () => void;
   reward: number | null;
   onRestart?: () => void;
+  /** Local matches can be paused; online matches can't */
+  onPause?: (paused: boolean) => void;
+  paused?: boolean;
 };
 
 type Aim = { pieceId: string; dx: number; dy: number };
 
-const SIDE_PANEL_W = 92;
+const SIDE_W = 84;
+const teamColor = (state: MatchState, team: Team) => PUCK_COLORS[state.sides[team].color];
 
 export function MatchView(props: Props) {
-  const { state, canControl, send, onExit, reward, onRestart } = props;
+  const { state, pos, canControl, send, onExit, reward, onRestart, onPause } = props;
+  const insets = useSafeAreaInsets();
   const [scale, setScale] = useState(0);
+  const [aim, setAim] = useState<Aim | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const scaleRef = useRef(0);
   const stateRef = useRef(state);
   const propsRef = useRef(props);
@@ -53,18 +62,38 @@ export function MatchView(props: Props) {
   stateRef.current = state;
   propsRef.current = props;
 
+  // UI-thread clock used to blend online updates (see AnimatedBody)
+  const clock = useSharedValue(0);
+  const startAt = useSharedValue(0);
+  const seenSeq = useSharedValue(-1);
+  useFrameCallback((frame) => {
+    clock.value = frame.timestamp;
+    const seq = pos.value.seq;
+    if (seq !== seenSeq.value) {
+      seenSeq.value = seq;
+      startAt.value = frame.timestamp;
+    }
+  });
+
+  const turnBarStyle = useAnimatedStyle(() => ({ width: `${pos.value.turnFrac * 100}%` }));
+
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    const s = Math.min(width / CANVAS_W, height / CANVAS_H) * 0.98;
+    const s = Math.min(width / CANVAS_W, height / CANVAS_H);
     scaleRef.current = s;
     setScale(s);
   };
 
   // Screen touch -> game units
   const toWorld = (e: GestureResponderEvent) => ({
-    x: (e.nativeEvent.pageX - touchOrigin.current.x) / scaleRef.current - GOAL_DEPTH,
-    y: (e.nativeEvent.pageY - touchOrigin.current.y) / scaleRef.current,
+    x: (e.nativeEvent.pageX - touchOrigin.current.x) / scaleRef.current - ORIGIN_X,
+    y: (e.nativeEvent.pageY - touchOrigin.current.y) / scaleRef.current - ORIGIN_Y,
   });
+
+  const updateAim = (next: Aim | null) => {
+    aimRef.current = next;
+    setAim(next ? { ...next } : null);
+  };
 
   const pan = useRef(
     PanResponder.create({
@@ -87,12 +116,12 @@ export function MatchView(props: Props) {
           for (const b of s.bodies) {
             if (b.kind !== 'piece' || b.team !== s.turn) continue;
             const d = Math.hypot(b.x - t.x, b.y - t.y);
-            if (d < b.r * 1.4 && d < bestDist) {
+            if (d < b.r * 1.35 && d < bestDist) {
               best = b;
               bestDist = d;
             }
           }
-          if (best) aimRef.current = { pieceId: best.id, dx: 0, dy: 0 };
+          if (best) updateAim({ pieceId: best.id, dx: 0, dy: 0 });
         } else if (s.phase === 'so-keeper' && allowed(actingTeam(s))) {
           keeperDrag.current = true;
           emit({ type: 'keeper', y: t.y }, actingTeam(s));
@@ -103,9 +132,9 @@ export function MatchView(props: Props) {
       onPanResponderMove: (e) => {
         const s = stateRef.current;
         const t = toWorld(e);
-        const aim = aimRef.current;
-        if (aim) {
-          const piece = s.bodies.find((b) => b.id === aim.pieceId);
+        const current = aimRef.current;
+        if (current) {
+          const piece = s.bodies.find((b) => b.id === current.pieceId);
           if (!piece) return;
           let dx = piece.x - t.x;
           let dy = piece.y - t.y;
@@ -114,8 +143,7 @@ export function MatchView(props: Props) {
             dx *= MAX_DRAG / len;
             dy *= MAX_DRAG / len;
           }
-          aim.dx = dx;
-          aim.dy = dy;
+          updateAim({ pieceId: current.pieceId, dx, dy });
         } else if (keeperDrag.current && Date.now() - lastKeeperSend.current > 30) {
           lastKeeperSend.current = Date.now();
           propsRef.current.send({ type: 'keeper', y: t.y }, actingTeam(s));
@@ -124,35 +152,48 @@ export function MatchView(props: Props) {
 
       onPanResponderRelease: () => {
         const s = stateRef.current;
-        const aim = aimRef.current;
-        aimRef.current = null;
+        const current = aimRef.current;
+        updateAim(null);
         keeperDrag.current = false;
-        if (aim && Math.hypot(aim.dx, aim.dy) >= MIN_DRAG) {
-          propsRef.current.send({ type: 'shoot', pieceId: aim.pieceId, dx: aim.dx, dy: aim.dy }, s.turn);
+        if (current && Math.hypot(current.dx, current.dy) >= MIN_DRAG) {
+          propsRef.current.send({ type: 'shoot', pieceId: current.pieceId, dx: current.dx, dy: current.dy }, s.turn);
         }
       },
 
       onPanResponderTerminate: () => {
-        aimRef.current = null;
+        updateAim(null);
         keeperDrag.current = false;
       },
     })
   ).current;
 
   // A shot that was cancelled by the turn ending shouldn't stay on screen
-  if (aimRef.current && state.phase !== 'aim' && state.phase !== 'so-aim') aimRef.current = null;
-
-  const aim = aimRef.current;
-  const aimPiece = aim ? state.bodies.find((b) => b.id === aim.pieceId) : undefined;
+  const aimActive = aim && (state.phase === 'aim' || state.phase === 'so-aim') ? aim : null;
+  const aimPiece = aimActive ? state.bodies.find((b) => b.id === aimActive.pieceId) : undefined;
   const aimPuck = aimPiece ? getSquadPuck(state, aimPiece.id) : undefined;
   const myTurnToShoot = (state.phase === 'aim' || state.phase === 'so-aim') && canControl(state.turn);
+  const acting = actingTeam(state);
+
+  const toggleMenu = (open: boolean) => {
+    setMenuOpen(open);
+    onPause?.(open);
+  };
 
   return (
-    <View style={styles.screen}>
-      <Hud state={state} onExit={onExit} />
+    <View style={[styles.screen, { paddingLeft: insets.left, paddingRight: insets.right }]}>
+      <Hud state={state} />
+      <View style={styles.turnTrack}>
+        <Animated.View
+          style={[
+            styles.turnBar,
+            { backgroundColor: teamColor(state, acting).main, alignSelf: acting === 0 ? 'flex-start' : 'flex-end' },
+            turnBarStyle,
+          ]}
+        />
+      </View>
 
       <View style={styles.middle}>
-        <SidePanel team={0} {...props} />
+        <SidePanel team={0} {...props} onMenu={() => toggleMenu(true)} />
 
         <View style={styles.fieldArea} onLayout={onLayout}>
           {scale > 0 && (
@@ -160,19 +201,29 @@ export function MatchView(props: Props) {
               {/* pointerEvents="none": every touch goes to the field, not to the pucks */}
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Field width={CANVAS_W * scale} height={CANVAS_H * scale} />
-                {state.bodies.map((b) => (
-                  <BodyView
-                    key={b.id}
-                    body={b}
-                    scale={scale}
-                    puck={b.kind === 'piece' ? getSquadPuck(state, b.id) : undefined}
-                    highlight={
-                      aim?.pieceId === b.id ? 'selected' : myTurnToShoot && b.team === state.turn ? 'active' : 'none'
-                    }
-                  />
-                ))}
-                {aim && aimPiece && aimPuck && (
-                  <AimOverlay piece={aimPiece} puck={aimPuck} dx={aim.dx} dy={aim.dy} scale={scale} />
+                {state.bodies.map((b, i) => {
+                  const puck = b.kind === 'piece' ? getSquadPuck(state, b.id) : undefined;
+                  return (
+                    <AnimatedBody
+                      key={b.id}
+                      index={i}
+                      kind={b.kind}
+                      r={b.r}
+                      scale={scale}
+                      pos={pos}
+                      clock={clock}
+                      startAt={startAt}
+                      color={b.team !== undefined ? state.sides[b.team].color : 'blue'}
+                      number={puck?.number ?? 0}
+                      health={puck ? Math.round(puck.health / 5) * 5 : undefined}
+                      highlight={
+                        aimActive?.pieceId === b.id ? 'selected' : myTurnToShoot && b.team === state.turn ? 'active' : 'none'
+                      }
+                    />
+                  );
+                })}
+                {aimActive && aimPiece && aimPuck && (
+                  <AimOverlay piece={aimPiece} puck={aimPuck} dx={aimActive.dx} dy={aimActive.dy} scale={scale} />
                 )}
               </View>
               <Banner state={state} canControl={canControl} />
@@ -180,7 +231,7 @@ export function MatchView(props: Props) {
           )}
         </View>
 
-        <SidePanel team={1} {...props} />
+        <SidePanel team={1} {...props} onMenu={() => toggleMenu(true)} />
       </View>
 
       {state.phase === 'sub' && canControl(state.turn) && (
@@ -189,20 +240,24 @@ export function MatchView(props: Props) {
 
       {state.phase === 'goal' && state.goalInfo && (
         <View style={styles.overlay} pointerEvents="none">
-          <Text style={styles.bigText}>GOAL!</Text>
-          <Text style={styles.subText}>
+          <Animated.Text entering={ZoomIn.springify().damping(12)} style={styles.bigText}>
+            GOAL!
+          </Animated.Text>
+          <Animated.Text entering={FadeIn.delay(200)} style={styles.subText}>
             {state.goalInfo.scorer
               ? `${state.goalInfo.scorer} scores for ${state.sides[state.goalInfo.team].name}`
               : `Own goal! Point to ${state.sides[state.goalInfo.team].name}`}
-          </Text>
+          </Animated.Text>
         </View>
       )}
 
       {state.phase === 'so-result' && state.shootout && (
         <View style={styles.overlay} pointerEvents="none">
-          <Text style={[styles.bigText, !state.shootout.lastScored && { color: COLORS.danger }]}>
+          <Animated.Text
+            entering={ZoomIn.springify().damping(12)}
+            style={[styles.bigText, !state.shootout.lastScored && { color: COLORS.danger }]}>
             {state.shootout.lastScored ? 'GOAL!' : 'MISSED!'}
-          </Text>
+          </Animated.Text>
           <Text style={styles.subText}>
             Trick shots {shootoutGoals(state, 0)} - {shootoutGoals(state, 1)}
           </Text>
@@ -211,19 +266,39 @@ export function MatchView(props: Props) {
 
       {state.phase === 'over' && state.winner !== null && (
         <View style={styles.overlay}>
-          <View style={styles.endCard}>
-            <Text style={styles.trophy}>🏆</Text>
-            <Text style={styles.endTitle}>{state.sides[state.winner].name} wins!</Text>
-            <Text style={styles.subText}>
+          <Animated.View entering={ZoomIn.springify().damping(14)} style={styles.endCard}>
+            <Avatar name={state.sides[state.winner].name} color={state.sides[state.winner].color} size={64} active />
+            <Text style={styles.endTitle}>🏆 {state.sides[state.winner].name} wins!</Text>
+            <Text style={styles.endScore}>
               {state.score[0]} - {state.score[1]}
-              {state.wonOnShootout ? `   (trick shots ${shootoutGoals(state, 0)} - ${shootoutGoals(state, 1)})` : ''}
             </Text>
-            {reward !== null && <Text style={styles.reward}>+{reward} 🪙 coins</Text>}
+            {state.wonOnShootout && (
+              <Text style={styles.subText}>
+                Trick shots {shootoutGoals(state, 0)} - {shootoutGoals(state, 1)}
+              </Text>
+            )}
+            {reward !== null && <Text style={styles.reward}>+{reward} 🪙</Text>}
             <View style={styles.row}>
               {onRestart && <Button title="Play again" onPress={onRestart} />}
               <Button title="Exit" variant="secondary" onPress={onExit} />
             </View>
-          </View>
+          </Animated.View>
+        </View>
+      )}
+
+      {menuOpen && state.phase !== 'over' && (
+        <View style={styles.overlay}>
+          <Animated.View entering={ZoomIn.springify().damping(16)} style={styles.menuCard}>
+            <Text style={styles.endTitle}>{onPause ? 'Paused' : 'Menu'}</Text>
+            {!onPause && <Text style={styles.subText}>The match keeps running online.</Text>}
+            <Button title="Resume" onPress={() => toggleMenu(false)} style={{ alignSelf: 'stretch' }} />
+            <Button
+              title={onPause ? 'Quit match' : 'Leave match (counts as a loss)'}
+              variant="danger"
+              onPress={onExit}
+              style={{ alignSelf: 'stretch' }}
+            />
+          </Animated.View>
         </View>
       )}
     </View>
@@ -239,99 +314,125 @@ const formatClock = (seconds: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function Hud({ state, onExit }: { state: MatchState; onExit: () => void }) {
-  const turnMax = state.phase === 'so-keeper' ? KEEPER_SECONDS : state.phase === 'so-aim' ? KICK_SECONDS : TURN_SECONDS;
-  const showTurnTimer = state.phase === 'aim' || state.phase === 'so-keeper' || state.phase === 'so-aim';
-
-  return (
-    <View>
-      <View style={styles.hud}>
-        <Pressable style={styles.exitBtn} onPress={onExit}>
-          <Text style={styles.exitText}>✕</Text>
-        </Pressable>
-        <TeamTag state={state} team={0} />
-        <Text style={styles.score}>{state.score[0]}</Text>
-        <View style={styles.clock}>
-          {state.shootout ? (
-            <Text style={styles.clockText}>{state.shootout.suddenDeath ? 'SUDDEN' : 'TRICK'}</Text>
-          ) : state.settings.mode === 'time' ? (
-            <Text style={styles.clockText}>{formatClock(state.clock)}</Text>
-          ) : (
-            <Text style={styles.clockText}>to {state.settings.goals}</Text>
-          )}
-          <Text style={styles.clockSub}>{showTurnTimer ? `${Math.ceil(Math.max(0, state.turnTime))}s` : ' '}</Text>
-        </View>
-        <Text style={styles.score}>{state.score[1]}</Text>
-        <TeamTag state={state} team={1} />
-      </View>
-      <View style={styles.turnTrack}>
-        {showTurnTimer && (
-          <View
-            style={{
-              width: `${Math.max(0, state.turnTime / turnMax) * 100}%`,
-              height: 4,
-              backgroundColor: COLORS.team[actingTeam(state)],
-              alignSelf: actingTeam(state) === 0 ? 'flex-start' : 'flex-end',
-            }}
-          />
-        )}
-      </View>
-    </View>
-  );
-}
-
-function TeamTag({ state, team }: { state: MatchState; team: Team }) {
-  const side = state.sides[team];
-  const active = actingTeam(state) === team && state.phase !== 'over';
-  const kicks = state.shootout?.kicks[team];
-  const remaining = state.shootout && !state.shootout.suddenDeath ? Math.max(0, SHOOTOUT_KICKS - kicks!.length) : 0;
-
+function Avatar({ name, color, size, active }: { name: string; color: PuckColorId; size: number; active: boolean }) {
+  const c = PUCK_COLORS[color];
   return (
     <View
       style={[
-        styles.tag,
-        team === 1 && { flexDirection: 'row-reverse' },
-        active && { backgroundColor: COLORS.team[team] },
+        styles.avatar,
+        { width: size, height: size, backgroundColor: c.main, borderColor: active ? COLORS.gold : '#e2e8f0' },
       ]}>
-      <View style={[styles.dot, { backgroundColor: active ? '#fff' : COLORS.team[team] }]} />
-      <View style={{ flexShrink: 1, alignItems: team === 1 ? 'flex-end' : 'flex-start' }}>
-        <Text style={styles.tagName} numberOfLines={1}>
-          {side.name}
-        </Text>
-        {kicks ? (
-          <Text style={styles.tagSub}>
-            {kicks.map((k) => (k ? '🟢' : '🔴')).join('')}
-            {'⚪'.repeat(remaining)}
-          </Text>
-        ) : (
-          <Text style={styles.tagSub}>⇄ {side.subsLeft} subs</Text>
-        )}
-      </View>
+      <View style={[styles.avatarShine, { backgroundColor: c.light }]} />
+      <Text style={[styles.avatarText, { fontSize: size * 0.48 }]}>{name[0]?.toUpperCase()}</Text>
     </View>
   );
 }
 
-/** Buttons beside the field: SUB for the shooting player, READY for the keeper */
-function SidePanel({ team, state, canControl, send }: Props & { team: Team }) {
+function Hud({ state }: { state: MatchState }) {
+  const acting = actingTeam(state);
+  const live = state.phase !== 'over';
+  return (
+    <View style={styles.hud}>
+      <PlayerBlock state={state} team={0} active={live && acting === 0} />
+      <View style={styles.scoreboard}>
+        <Text style={[styles.score, { borderColor: teamColor(state, 0).main }]}>{state.score[0]}</Text>
+        <View style={styles.clock}>
+          <Text style={styles.clockText}>
+            {state.shootout
+              ? state.shootout.suddenDeath
+                ? 'SUDDEN'
+                : 'TRICK'
+              : state.settings.mode === 'time'
+                ? formatClock(state.clock)
+                : `TO ${state.settings.goals}`}
+          </Text>
+          <Text style={styles.clockSub}>
+            {state.phase === 'aim' || state.phase === 'so-aim' || state.phase === 'so-keeper'
+              ? `${Math.ceil(Math.max(0, state.turnTime))}s left`
+              : state.phase === 'sub'
+                ? `sub ${Math.ceil(Math.max(0, state.subTime))}s`
+                : ' '}
+          </Text>
+        </View>
+        <Text style={[styles.score, { borderColor: teamColor(state, 1).main }]}>{state.score[1]}</Text>
+      </View>
+      <PlayerBlock state={state} team={1} active={live && acting === 1} />
+    </View>
+  );
+}
+
+function PlayerBlock({ state, team, active }: { state: MatchState; team: Team; active: boolean }) {
+  const side = state.sides[team];
+  const kicks = state.shootout?.kicks[team];
+  const remaining = state.shootout && !state.shootout.suddenDeath ? Math.max(0, SHOOTOUT_KICKS - kicks!.length) : 0;
+  const right = team === 1;
+
+  return (
+    <View style={[styles.player, right && { flexDirection: 'row-reverse' }, active && { backgroundColor: '#1e293b' }]}>
+      <Avatar name={side.name} color={side.color} size={38} active={active} />
+      <View style={{ flexShrink: 1, alignItems: right ? 'flex-end' : 'flex-start', gap: 3 }}>
+        <Text style={styles.playerName} numberOfLines={1}>
+          {side.name}
+        </Text>
+        <View style={[styles.pips, right && { flexDirection: 'row-reverse' }]}>
+          {kicks ? (
+            <>
+              {kicks.map((k, i) => (
+                <View key={i} style={[styles.kickDot, { backgroundColor: k ? '#22c55e' : '#ef4444' }]} />
+              ))}
+              {Array.from({ length: remaining }, (_, i) => (
+                <View key={`r${i}`} style={[styles.kickDot, { backgroundColor: '#475569' }]} />
+              ))}
+            </>
+          ) : (
+            <>
+              <Text style={styles.pipLabel}>SUBS</Text>
+              {[0, 1, 2].map((i) => (
+                <View key={i} style={[styles.pip, { backgroundColor: i < side.subsLeft ? PUCK_COLORS[side.color].light : '#334155' }]} />
+              ))}
+            </>
+          )}
+        </View>
+      </View>
+      {active && <View style={[styles.activeBar, { backgroundColor: PUCK_COLORS[side.color].main }]} />}
+    </View>
+  );
+}
+
+/** Beside the field: menu button, SUB for the shooting player, READY for the keeper */
+function SidePanel({ team, state, canControl, send, onMenu }: Props & { team: Team; onMenu: () => void }) {
   const side = state.sides[team];
   const mine = canControl(team);
   const canSub =
     mine && state.phase === 'aim' && state.turn === team && side.subsLeft > 0 && eligibleBench(side).length > 0;
   const keeperReady = mine && state.phase === 'so-keeper' && actingTeam(state) === team;
+  const c = PUCK_COLORS[side.color];
 
   return (
     <View style={styles.sidePanel}>
+      <View style={{ flex: 1 }} />
       {canSub && (
-        <Pressable style={[styles.sideBtn, { backgroundColor: COLORS.team[team] }]} onPress={() => send({ type: 'startSub' }, team)}>
-          <Text style={styles.sideBtnIcon}>⇄</Text>
-          <Text style={styles.sideBtnText}>SUB</Text>
-          <Text style={styles.sideBtnSmall}>{side.subsLeft} left</Text>
-        </Pressable>
+        <Animated.View entering={ZoomIn}>
+          <Pressable
+            style={({ pressed }) => [styles.sideBtn, { backgroundColor: c.main, borderColor: c.light, opacity: pressed ? 0.8 : 1 }]}
+            onPress={() => send({ type: 'startSub' }, team)}>
+            <Text style={styles.sideBtnIcon}>⇄</Text>
+            <Text style={styles.sideBtnText}>SUB</Text>
+            <Text style={styles.sideBtnSmall}>{side.subsLeft} left</Text>
+          </Pressable>
+        </Animated.View>
       )}
       {keeperReady && (
-        <Pressable style={[styles.sideBtn, { backgroundColor: COLORS.accent }]} onPress={() => send({ type: 'keeperReady' }, team)}>
-          <Text style={styles.sideBtnIcon}>🧤</Text>
-          <Text style={styles.sideBtnText}>READY</Text>
+        <Animated.View entering={ZoomIn}>
+          <Pressable style={[styles.sideBtn, { backgroundColor: COLORS.accent, borderColor: '#bbf7d0' }]} onPress={() => send({ type: 'keeperReady' }, team)}>
+            <Text style={styles.sideBtnIcon}>🧤</Text>
+            <Text style={styles.sideBtnText}>READY</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+      {team === 0 && (
+        <Pressable style={styles.menuBtn} onPress={onMenu}>
+          <Text style={styles.menuIcon}>☰</Text>
         </Pressable>
       )}
     </View>
@@ -343,59 +444,77 @@ function Banner({ state, canControl }: { state: MatchState; canControl: (t: Team
   const name = state.sides[acting].name;
   const so = state.shootout;
   let text = '';
-  if (state.phase === 'aim') text = canControl(acting) ? `${name}: pull back a puck and release to shoot` : `${name}'s turn`;
+  if (state.phase === 'aim') text = canControl(acting) ? `${name}: pull back a puck & release` : `${name}'s turn`;
   else if (state.phase === 'sub') text = `${name} is making substitutions`;
   else if (state.phase === 'so-keeper' && so) {
     const kick = so.kicks[so.shooter].length + 1;
     text = canControl(acting)
-      ? `Trick shot #${kick}: ${name}, drag up/down to place your keeper, then READY`
+      ? `Trick shot #${kick}: ${name}, slide your keeper up/down, then READY`
       : `Trick shot #${kick}: ${name} is placing the keeper`;
   } else if (state.phase === 'so-aim') text = `Trick shot! ${name} shoots — bank it off the walls`;
   if (!text) return null;
 
   return (
     <View style={styles.bannerWrap} pointerEvents="none">
-      <View style={[styles.banner, { borderColor: COLORS.team[acting] }]}>
+      <Animated.View key={text} entering={FadeIn.duration(200)} style={[styles.banner, { borderColor: teamColor(state, acting).main }]}>
         <Text style={styles.bannerText}>{text}</Text>
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
-type BodyViewProps = { body: Body; scale: number; puck?: SquadPuck; highlight: 'none' | 'active' | 'selected' };
+type BodyProps = {
+  index: number;
+  kind: BodyKind;
+  r: number;
+  scale: number;
+  pos: SharedValue<PosBuffer>;
+  clock: SharedValue<number>;
+  startAt: SharedValue<number>;
+  color: PuckColorId;
+  number: number;
+  health?: number;
+  highlight: 'none' | 'active' | 'selected';
+};
 
-function BodyView({ body, scale, puck, highlight }: BodyViewProps) {
-  const size = body.r * 2 * scale;
-  const left = (body.x + GOAL_DEPTH) * scale - size / 2;
-  const top = body.y * scale - size / 2;
+/** One puck/ball/block. Its position is applied on the UI thread every frame. */
+const AnimatedBody = memo(function AnimatedBody(props: BodyProps) {
+  const { index, kind, r, scale, pos, clock, startAt } = props;
+  const artScale = kind === 'piece' ? PUCK_ART_SCALE : kind === 'ball' ? 100 / 88 : 100 / 84;
+  const size = r * 2 * scale * artScale;
 
-  if (body.kind === 'ball') {
-    // Spin the ball as it moves
-    return (
-      <View style={{ position: 'absolute', left, top, transform: [{ rotate: `${(body.x + body.y) * 2}deg` }] }}>
-        <BallArt size={size} />
-      </View>
-    );
-  }
-  if (body.kind === 'block') {
-    return (
-      <View style={{ position: 'absolute', left, top }}>
-        <BlockArt size={size} />
-      </View>
-    );
-  }
+  const style = useAnimatedStyle(() => {
+    const p = pos.value;
+    const i = index * 2;
+    if (i + 1 >= p.cur.length) return { opacity: 0 };
+    const t = p.dur > 0 ? Math.min(1, Math.max(0, (clock.value - startAt.value) / p.dur)) : 1;
+    const hasPrev = p.prev.length === p.cur.length;
+    const fromX = hasPrev ? p.prev[i] : p.cur[i];
+    const fromY = hasPrev ? p.prev[i + 1] : p.cur[i + 1];
+    const x = fromX + (p.cur[i] - fromX) * t;
+    const y = fromY + (p.cur[i + 1] - fromY) * t;
+    return {
+      opacity: 1,
+      transform: [
+        { translateX: (x + ORIGIN_X) * scale - size / 2 },
+        { translateY: (y + ORIGIN_Y) * scale - size / 2 },
+        { rotate: kind === 'ball' ? `${(x + y) * 2}deg` : '0deg' },
+      ],
+    };
+  });
+
   return (
-    <View style={{ position: 'absolute', left, top }}>
-      <PuckArt
-        size={size}
-        team={body.team ?? 0}
-        number={puck?.number ?? 0}
-        health={puck ? Math.round(puck.health / 5) * 5 : undefined}
-        highlight={highlight}
-      />
-    </View>
+    <Animated.View style={[{ position: 'absolute', left: 0, top: 0, width: size, height: size }, style]}>
+      {kind === 'ball' ? (
+        <BallArt size={size} />
+      ) : kind === 'block' ? (
+        <BlockArt size={size} />
+      ) : (
+        <PuckArt size={size} color={props.color} number={props.number} health={props.health} highlight={props.highlight} />
+      )}
+    </Animated.View>
   );
-}
+});
 
 type AimProps = { piece: Body; puck: SquadPuck; dx: number; dy: number; scale: number };
 
@@ -407,10 +526,9 @@ function AimOverlay({ piece, puck, dx, dy, scale }: AimProps) {
   const power = Math.min(1, pull / MAX_DRAG);
   const ux = dx / pull;
   const uy = dy / pull;
-  const eff = effectiveness(puck.health);
-  const guide = aimLength(puck.levels.aim) * eff;
-  const cx = piece.x + GOAL_DEPTH;
-  const cy = piece.y;
+  const guide = aimLength(puck.levels.aim) * effectiveness(puck.health);
+  const cx = piece.x + ORIGIN_X;
+  const cy = piece.y + ORIGIN_Y;
   const r = piece.r;
   const color = power > 0.75 ? '#ef4444' : power > 0.4 ? '#f97316' : '#facc15';
   const endX = cx + ux * (r + guide);
@@ -419,21 +537,21 @@ function AimOverlay({ piece, puck, dx, dy, scale }: AimProps) {
   const py = ux;
 
   return (
-    <Svg
-      style={StyleSheet.absoluteFill}
-      width={CANVAS_W * scale}
-      height={CANVAS_H * scale}
-      viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}>
-      <Circle cx={cx} cy={cy} r={r + 12 + power * 70} fill="none" stroke="#fff" strokeOpacity={0.8} strokeWidth={3} strokeDasharray="10 8" />
+    <Svg style={StyleSheet.absoluteFill} width={CANVAS_W * scale} height={CANVAS_H * scale} viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}>
+      <Circle cx={cx} cy={cy} r={r + 14 + power * 70} fill="#ffffff" fillOpacity={0.07} stroke="#fff" strokeOpacity={0.85} strokeWidth={3} strokeDasharray="10 8" />
       {[1, 2, 3, 4, 5].map((i) => (
-        <Circle key={i} cx={cx - ux * (r + (pull * i) / 5)} cy={cy - uy * (r + (pull * i) / 5)} r={5} fill="#fff" opacity={0.85} />
+        <Circle key={i} cx={cx - ux * (r + (pull * i) / 5)} cy={cy - uy * (r + (pull * i) / 5)} r={5.5 - i * 0.5} fill="#fff" opacity={0.9} />
       ))}
+      <Line x1={cx + ux * (r + 6)} y1={cy + uy * (r + 6)} x2={endX} y2={endY} stroke="#000" strokeOpacity={0.35} strokeWidth={11} strokeLinecap="round" />
       <Line x1={cx + ux * (r + 6)} y1={cy + uy * (r + 6)} x2={endX} y2={endY} stroke={color} strokeWidth={7} strokeDasharray="16 10" strokeLinecap="round" />
       <Polygon
-        points={`${endX + ux * 22},${endY + uy * 22} ${endX + px * 13},${endY + py * 13} ${endX - px * 13},${endY - py * 13}`}
+        points={`${endX + ux * 24},${endY + uy * 24} ${endX + px * 14},${endY + py * 14} ${endX - px * 14},${endY - py * 14}`}
         fill={color}
+        stroke="#000"
+        strokeOpacity={0.35}
+        strokeWidth={2}
       />
-      <SvgText x={cx} y={cy - r - 22 - power * 70} fill="#fff" fontSize={26} fontWeight="900" textAnchor="middle">
+      <SvgText x={cx} y={cy - r - 24 - power * 70} fill="#fff" stroke="#000" strokeOpacity={0.4} strokeWidth={1} fontSize={28} fontWeight="900" textAnchor="middle">
         {`${Math.round(power * 100)}%`}
       </SvgText>
     </Svg>
@@ -457,52 +575,57 @@ function SubPanel({ state, team, send }: { state: MatchState; team: Team; send: 
 
   return (
     <View style={styles.overlay}>
-      <View style={styles.subCard}>
+      <Animated.View entering={ZoomIn.springify().damping(16)} style={styles.subCard}>
         <View style={styles.rowBetween}>
           <Text style={styles.subTitle}>⇄ Substitution · {side.name}</Text>
           <Text style={styles.subTimer}>
             {Math.ceil(Math.max(0, state.subTime))}s · {side.subsLeft} left
           </Text>
         </View>
-        <Text style={styles.subHint}>{outId ? 'Now pick a bench puck to bring on' : 'Tap a puck on the field to take off'}</Text>
+        <Text style={styles.subHint}>{outId ? 'Now pick a bench puck to bring on' : 'Tap a tired puck on the field to take it off'}</Text>
 
-        <Text style={styles.subLabel}>ON FIELD</Text>
-        <View style={styles.subRow}>
-          {onField.map((p) => (
-            <PuckCard key={p.id} puck={p} team={team} selected={p.id === outId} onPress={() => pick('out', p.id)} />
-          ))}
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <View style={{ flex: 5, gap: 6 }}>
+            <Text style={styles.subLabel}>ON FIELD</Text>
+            <View style={styles.subRow}>
+              {onField.map((p) => (
+                <PuckCard key={p.id} puck={p} color={side.color} selected={p.id === outId} onPress={() => pick('out', p.id)} />
+              ))}
+            </View>
+          </View>
+          <View style={{ flex: 3, gap: 6 }}>
+            <Text style={styles.subLabel}>BENCH</Text>
+            <View style={styles.subRow}>
+              {bench.map((p) => {
+                const used = side.subbedOff.includes(p.id);
+                return <PuckCard key={p.id} puck={p} color={side.color} disabled={used || !outId} used={used} onPress={() => pick('in', p.id)} />;
+              })}
+            </View>
+          </View>
         </View>
 
-        <Text style={styles.subLabel}>BENCH</Text>
-        <View style={styles.subRow}>
-          {bench.map((p) => {
-            const used = side.subbedOff.includes(p.id);
-            return <PuckCard key={p.id} puck={p} team={team} disabled={used || !outId} used={used} onPress={() => pick('in', p.id)} />;
-          })}
-        </View>
-
-        <Button title="Done" small onPress={() => send({ type: 'endSub' })} style={{ alignSelf: 'flex-end' }} />
-      </View>
+        <Button title="Done" small onPress={() => send({ type: 'endSub' })} style={{ alignSelf: 'flex-end', minWidth: 110 }} />
+      </Animated.View>
     </View>
   );
 }
 
 type PuckCardProps = {
   puck: SquadPuck;
-  team: Team;
+  color: PuckColorId;
   selected?: boolean;
   disabled?: boolean;
   used?: boolean;
   onPress: () => void;
 };
 
-function PuckCard({ puck, team, selected, disabled, used, onPress }: PuckCardProps) {
+function PuckCard({ puck, color, selected, disabled, used, onPress }: PuckCardProps) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={[styles.puckCard, selected && { borderColor: COLORS.gold }, (used || disabled) && { opacity: used ? 0.35 : 0.75 }]}>
-      <PuckArt size={38} team={team} number={puck.number} />
+      <PuckArt size={44} color={color} number={puck.number} />
       <Text style={styles.puckCardName} numberOfLines={1}>
         {puck.name}
       </Text>
@@ -515,117 +638,158 @@ function PuckCard({ puck, team, selected, disabled, used, onPress }: PuckCardPro
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0a2a12' },
+  screen: { flex: 1, backgroundColor: '#04150b' },
   hud: {
-    height: 46,
+    height: 54,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 8,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0b1220',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
   },
-  exitBtn: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#334155', alignItems: 'center', justifyContent: 'center' },
-  exitText: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  tag: {
+  player: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#1e293b',
+    gap: 8,
+    paddingHorizontal: 6,
+    height: 46,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  tagName: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  tagSub: { color: '#e2e8f0', fontSize: 10 },
+  playerName: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  pips: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pipLabel: { color: '#94a3b8', fontSize: 9, fontWeight: '900', marginHorizontal: 2 },
+  pip: { width: 14, height: 5, borderRadius: 3 },
+  kickDot: { width: 10, height: 10, borderRadius: 5 },
+  activeBar: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3 },
+  avatar: { borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarShine: { position: 'absolute', top: -8, left: -8, width: '70%', height: '55%', borderRadius: 40, opacity: 0.45 },
+  avatarText: { color: '#fff', fontWeight: '900', textShadowColor: '#0006', textShadowRadius: 3 },
+  scoreboard: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   score: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '900',
-    minWidth: 40,
+    minWidth: 46,
     textAlign: 'center',
     backgroundColor: '#020617',
-    borderRadius: 8,
+    borderRadius: 10,
+    borderBottomWidth: 3,
     overflow: 'hidden',
     paddingVertical: 2,
   },
-  clock: { width: 72, height: 38, borderRadius: 8, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
-  clockText: { fontSize: 15, fontWeight: '900', color: '#0f172a' },
-  clockSub: { fontSize: 10, fontWeight: '700', color: '#475569' },
+  clock: {
+    width: 86,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 3,
+    borderBottomColor: '#cbd5e1',
+  },
+  clockText: { fontSize: 17, fontWeight: '900', color: '#0f172a', letterSpacing: 0.5 },
+  clockSub: { fontSize: 10, fontWeight: '800', color: '#64748b' },
   turnTrack: { height: 4, backgroundColor: '#020617' },
+  turnBar: { height: 4 },
   middle: { flex: 1, flexDirection: 'row' },
-  sidePanel: { width: SIDE_PANEL_W, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 12 },
-  sideBtn: { width: 76, paddingVertical: 10, borderRadius: 14, alignItems: 'center' },
-  sideBtnIcon: { fontSize: 20, color: '#fff' },
+  sidePanel: { width: SIDE_W, alignItems: 'center', paddingVertical: 10, gap: 10 },
+  sideBtn: { width: 72, paddingVertical: 10, borderRadius: 16, alignItems: 'center', borderWidth: 2 },
+  sideBtnIcon: { fontSize: 22, color: '#fff' },
   sideBtnText: { color: '#fff', fontWeight: '900', fontSize: 14 },
   sideBtnSmall: { color: '#fff', fontSize: 10, opacity: 0.85 },
-  fieldArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  bannerWrap: { position: 'absolute', top: 6, left: 0, right: 0, alignItems: 'center' },
+  menuBtn: {
+    width: 52,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: '#22c55e',
+    borderBottomWidth: 4,
+    borderBottomColor: '#15803d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuIcon: { color: '#fff', fontSize: 24, fontWeight: '900' },
+  fieldArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+  bannerWrap: { position: 'absolute', top: 4, left: 0, right: 0, alignItems: 'center' },
   banner: {
-    backgroundColor: 'rgba(2,6,23,0.75)',
+    backgroundColor: 'rgba(2,6,23,0.78)',
     borderRadius: 20,
     borderWidth: 2,
     paddingVertical: 4,
     paddingHorizontal: 14,
     maxWidth: '90%',
   },
-  bannerText: { color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' },
+  bannerText: { color: '#fff', fontWeight: '800', fontSize: 12, textAlign: 'center' },
   overlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   bigText: {
-    fontSize: 60,
+    fontSize: 72,
     fontWeight: '900',
     color: COLORS.gold,
     textShadowColor: '#000',
-    textShadowOffset: { width: 2, height: 3 },
-    textShadowRadius: 4,
+    textShadowOffset: { width: 3, height: 4 },
+    textShadowRadius: 6,
+    letterSpacing: 2,
   },
-  subText: { fontSize: 18, color: '#fff', fontWeight: '700', textAlign: 'center' },
+  subText: { fontSize: 17, color: '#fff', fontWeight: '700', textAlign: 'center' },
   endCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 28,
     alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
+    gap: 6,
+    borderWidth: 2,
     borderColor: COLORS.border,
-    minWidth: 320,
+    minWidth: 340,
   },
-  trophy: { fontSize: 44 },
-  endTitle: { color: '#fff', fontSize: 26, fontWeight: '900' },
-  reward: { color: COLORS.gold, fontSize: 18, fontWeight: '900' },
+  menuCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    padding: 22,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    width: 320,
+  },
+  endTitle: { color: '#fff', fontSize: 24, fontWeight: '900' },
+  endScore: { color: '#fff', fontSize: 40, fontWeight: '900' },
+  reward: { color: COLORS.gold, fontSize: 22, fontWeight: '900' },
   row: { flexDirection: 'row', gap: 12, marginTop: 8 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   subCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 14,
-    gap: 6,
-    width: '92%',
-    maxWidth: 720,
-    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 8,
+    width: '94%',
+    maxWidth: 860,
+    borderWidth: 2,
     borderColor: COLORS.border,
   },
-  subTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  subTimer: { color: COLORS.gold, fontWeight: '900' },
+  subTitle: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  subTimer: { color: COLORS.gold, fontWeight: '900', fontSize: 15 },
   subHint: { color: COLORS.muted, fontSize: 12 },
-  subLabel: { color: COLORS.muted, fontSize: 11, fontWeight: '800', marginTop: 4 },
+  subLabel: { color: COLORS.muted, fontSize: 11, fontWeight: '900' },
   subRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   puckCard: {
-    width: 74,
+    width: 78,
     alignItems: 'center',
     gap: 3,
     padding: 6,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: COLORS.cardLight,
     borderWidth: 2,
     borderColor: 'transparent',
@@ -633,4 +797,3 @@ const styles = StyleSheet.create({
   puckCardName: { color: '#fff', fontSize: 11, fontWeight: '800' },
   puckCardSub: { color: COLORS.muted, fontSize: 10 },
 });
-

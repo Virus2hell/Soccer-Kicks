@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 // An emoji as the tab icon (dimmed when the tab isn't selected)
 const icon = (emoji: string) =>
   function TabIcon({ focused }: { focused: boolean }) {
-    return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>;
+    return <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>;
   };
 
 export default function TabLayout() {
@@ -22,13 +22,19 @@ export default function TabLayout() {
   }
   if (status === 'loggedOut') return <Redirect href="/login" />;
 
+  // Landscape: the tabs sit in a rail on the left side
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: COLORS.card, borderTopColor: COLORS.border },
+        tabBarPosition: 'left',
+        tabBarVariant: 'material',
+        tabBarLabelPosition: 'below-icon',
+        tabBarStyle: { backgroundColor: COLORS.card, borderRightColor: COLORS.border, width: 88 },
         tabBarActiveTintColor: COLORS.accent,
         tabBarInactiveTintColor: COLORS.muted,
+        tabBarActiveBackgroundColor: '#22c55e22',
+        tabBarLabelStyle: { fontWeight: '800' },
       }}>
       <Tabs.Screen name="index" options={{ title: 'Play', tabBarIcon: icon('⚽') }} />
       <Tabs.Screen name="squad" options={{ title: 'Squad', tabBarIcon: icon('🛡️') }} />

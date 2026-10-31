@@ -1,6 +1,8 @@
 // Shared types used by the app AND the online server.
 // Keep this folder free of React Native imports so the server can use it too.
 
+import type { PuckColorId } from './colors';
+
 export type Team = 0 | 1;
 
 export type StatKey = 'power' | 'accuracy' | 'aim' | 'stamina';
@@ -32,6 +34,7 @@ export type PlayerStats = {
 export type Profile = {
   username: string;
   coins: number;
+  color: PuckColorId;
   formation: FormationId;
   lineup: string[]; // puck ids: first 5 = starters (in formation slot order), rest = bench
   pucks: PuckData[];

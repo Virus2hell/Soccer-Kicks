@@ -64,6 +64,7 @@ export function createDefaultProfile(username: string): Profile {
   return {
     username,
     coins: STARTING_COINS,
+    color: 'blue',
     formation: '2-2',
     lineup: pucks.map((p) => p.id),
     pucks,
