@@ -27,10 +27,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Online lobby | Profile & stats |
 |:---:|:---:|
-| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="docs/screenshots/puck-stats-profile.png" width="420" alt="Profile" /> |
-
-<!-- Optional: a short gameplay GIF -->
-<!-- <p align="center"><img src="docs/screenshots/gameplay.gif" width="700" alt="Gameplay" /></p> -->
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/puck-stats-profile.png" width="420" alt="Profile" /> |
 
 ---
 
@@ -210,9 +207,8 @@ Both players register (different usernames) → one taps **Online → Create roo
 
 **Atharva Narvekar**
 <!-- Add your links -->
-- GitHub: [@your-username](https://github.com/your-username)
-- LinkedIn: [your-profile](https://linkedin.com/in/your-profile)
+- GitHub: [@Virus2hell](https://github.com/Virus2hell)
+- LinkedIn: [Atharva Narvekar](https://www.linkedin.com/in/atharva-narvekar-8535862b1/)
 
 ---
 
-<p align="center">Made with ⚽ and React Native</p>
