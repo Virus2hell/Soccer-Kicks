@@ -27,7 +27,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Online lobby | Profile & stats |
 |:---:|:---:|
-| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/puck-stats-profile.png" width="420" alt="Profile" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/puck-stats-profile.jpeg" width="420" alt="Profile" /> |
 
 ---
 
