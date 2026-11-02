@@ -194,15 +194,6 @@ Both players register (different usernames) → one taps **Online → Create roo
 
 ---
 
-## 🗺️ Roadmap
-- [ ] Host the server online (Render / Railway) to play over mobile data
-- [ ] Sound effects and haptics
-- [ ] Single-player mode vs. AI
-- [ ] Leaderboards and friends list
-- [ ] Unlockable puck designs
-
----
-
 ## 👨‍💻 Author
 
 **Atharva Narvekar**
