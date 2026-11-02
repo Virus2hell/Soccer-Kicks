@@ -15,23 +15,19 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Login | Home |
 |:---:|:---:|
-| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/home-screen.jpeg" width="420" alt="Home screen" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/login-screen.jpeg" width="420" alt="Login screen" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/home-screen.jpeg" width="420" alt="Home screen" /> |
 
-| Match | Aiming a shot |
+| Match | Substitutions |
 |:---:|:---:|
-| <img src="docs/screenshots/match.png" width="420" alt="Match" /> | <img src="docs/screenshots/aim.png" width="420" alt="Aiming" /> |
-
-| Substitutions | Trick-shot shootout |
-|:---:|:---:|
-| <img src="docs/screenshots/substitution.png" width="420" alt="Substitution panel" /> | <img src="docs/screenshots/shootout.png" width="420" alt="Trick-shot shootout" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/match.jpeg" width="420" alt="Match" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/substitution.jpeg" width="420" alt="Aiming" /> |
 
 | Squad & formations | Puck upgrades |
 |:---:|:---:|
-| <img src="docs/screenshots/squad.png" width="420" alt="Squad screen" /> | <img src="docs/screenshots/upgrades.png" width="420" alt="Puck upgrades" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/formation.jpeg" width="420" alt="Squad screen" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/puck-upgrade.jpeg" width="420" alt="Puck upgrades" /> |
 
 | Online lobby | Profile & stats |
 |:---:|:---:|
-| <img src="docs/screenshots/online-lobby.png" width="420" alt="Online lobby" /> | <img src="docs/screenshots/profile.png" width="420" alt="Profile" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="docs/screenshots/puck-stats-profile.png" width="420" alt="Profile" /> |
 
 <!-- Optional: a short gameplay GIF -->
 <!-- <p align="center"><img src="docs/screenshots/gameplay.gif" width="700" alt="Gameplay" /></p> -->
