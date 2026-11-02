@@ -13,16 +13,9 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 ## 📸 Screenshots
 
-<!--
-  HOW TO ADD YOUR PHOTOS:
-  1. Create a folder called  docs/screenshots  in the project root.
-  2. Put your images in it with the file names used below (or change the names here).
-  3. Commit and push — GitHub shows them automatically.
--->
-
 | Login | Home |
 |:---:|:---:|
-| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="docs/screenshots/home.png" width="420" alt="Home screen" /> |
+| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="[docs/screenshots/home.png](https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/home-screen.jpeg?raw=true)" width="420" alt="Home screen" /> |
 
 | Match | Aiming a shot |
 |:---:|:---:|
