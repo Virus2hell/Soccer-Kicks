@@ -15,7 +15,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Login | Home |
 |:---:|:---:|
-| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="docs/screenshots/home.png" width="420" alt="Home screen" /> |
+| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/home-screen.jpeg" width="420" alt="Home screen" /> |
 
 | Match | Aiming a shot |
 |:---:|:---:|
