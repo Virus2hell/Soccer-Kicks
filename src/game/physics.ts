@@ -27,26 +27,29 @@ export type CollideFn = (a: Body, b: Body, impulse: number) => void;
 // ---- Field size in "game units" (scaled to pixels when drawing) ----
 export const FIELD_W = 1000;
 export const FIELD_H = 600;
-export const GOAL_MOUTH = 200;
-export const GOAL_DEPTH = 70;
+// Sizes measured from real Soccer Stars gameplay (field = 1000 wide)
+export const GOAL_MOUTH = 240;
+export const GOAL_DEPTH = 66;
 export const GOAL_TOP = (FIELD_H - GOAL_MOUTH) / 2;
 export const GOAL_BOTTOM = GOAL_TOP + GOAL_MOUTH;
 
-export const PIECE_R = 42;
-export const BALL_R = 17;
-export const BLOCK_R = 26;
+export const PIECE_R = 34;
+export const BALL_R = 14;
+export const BLOCK_R = 24;
 export const POST_R = 8;
 
-export const PIECE_MASS = 2;
+export const PIECE_MASS = 3; // the light ball flies off a puck ~1.4x faster
 export const BALL_MASS = 1;
 
-// ---- Tuning ----
-const BODY_BOUNCE = 0.92;
-const WALL_BOUNCE = 0.7;
-const PIECE_FRICTION = 0.972; // speed kept per frame (lower = stops sooner)
-const BALL_FRICTION = 0.982;
-const LINEAR_DRAG = 0.025; // extra slowdown so things don't crawl forever
-const STOP_SPEED = 0.06;
+// ---- Tuning (matched to the reference video) ----
+// Pucks slide: they lose about the same speed every frame (sliding friction),
+// so a shot glides smoothly and then settles. The ball rolls: much less friction.
+const BODY_BOUNCE = 0.9;
+const WALL_BOUNCE = { piece: 0.6, ball: 0.78, block: 0 };
+const NET_BOUNCE = 0.35; // the net soaks up most of the ball's speed
+const DRAG = { piece: 0.995, ball: 0.992, block: 1 }; // speed kept per frame
+const SLIDE = { piece: 0.06, ball: 0.018, block: 0 }; // speed lost per frame
+const STOP_SPEED = 0.05;
 const SUBSTEPS = 4; // more = fewer bodies passing through each other
 
 export const POSTS = [
@@ -60,8 +63,10 @@ export const POSTS = [
  * Advances the world by `frames` (1 = one 60fps frame).
  * Returns the team that scored, or null.
  * Left goal = team 1 scores, right goal = team 0 scores.
+ * With allowGoals = false (during the goal celebration) the ball just bounces
+ * around inside the net and rolls back out.
  */
-export function step(bodies: Body[], frames: number, onCollide?: CollideFn): Team | null {
+export function step(bodies: Body[], frames: number, onCollide?: CollideFn, allowGoals = true): Team | null {
   const h = frames / SUBSTEPS;
 
   for (let s = 0; s < SUBSTEPS; s++) {
@@ -72,7 +77,7 @@ export function step(bodies: Body[], frames: number, onCollide?: CollideFn): Tea
     }
 
     for (const b of bodies) {
-      const scorer = collideWalls(b);
+      const scorer = collideWalls(b, allowGoals);
       if (scorer !== null) return scorer;
     }
 
@@ -99,7 +104,7 @@ export function isMoving(bodies: Body[]) {
   return bodies.some((b) => b.vx !== 0 || b.vy !== 0);
 }
 
-function collideWalls(b: Body): Team | null {
+function collideWalls(b: Body, allowGoals: boolean): Team | null {
   if (b.mass === 0) return null;
 
   if (b.x < 0 || b.x > FIELD_W) {
@@ -107,19 +112,21 @@ function collideWalls(b: Body): Team | null {
     const left = b.x < 0;
     const depth = left ? -b.x : b.x - FIELD_W;
 
-    if (b.kind === 'ball' && depth > b.r) return left ? 1 : 0;
+    // The whole ball is over the line = goal (it keeps moving afterwards)
+    if (b.kind === 'ball' && depth > b.r && allowGoals) return left ? 1 : 0;
 
     // Net: back wall + side walls
     if (depth + b.r > GOAL_DEPTH) {
       b.x = left ? -(GOAL_DEPTH - b.r) : FIELD_W + GOAL_DEPTH - b.r;
-      b.vx = left ? Math.abs(b.vx) * WALL_BOUNCE : -Math.abs(b.vx) * WALL_BOUNCE;
+      b.vx = left ? Math.abs(b.vx) * NET_BOUNCE : -Math.abs(b.vx) * NET_BOUNCE;
+      b.vy *= 0.7;
     }
     if (b.y - b.r < GOAL_TOP) {
       b.y = GOAL_TOP + b.r;
-      b.vy = Math.abs(b.vy) * WALL_BOUNCE;
+      b.vy = Math.abs(b.vy) * NET_BOUNCE;
     } else if (b.y + b.r > GOAL_BOTTOM) {
       b.y = GOAL_BOTTOM - b.r;
-      b.vy = -Math.abs(b.vy) * WALL_BOUNCE;
+      b.vy = -Math.abs(b.vy) * NET_BOUNCE;
     }
     return null;
   }
@@ -129,19 +136,19 @@ function collideWalls(b: Body): Team | null {
   if (!inMouth) {
     if (b.x - b.r < 0) {
       b.x = b.r;
-      b.vx = Math.abs(b.vx) * WALL_BOUNCE;
+      b.vx = Math.abs(b.vx) * WALL_BOUNCE[b.kind];
     } else if (b.x + b.r > FIELD_W) {
       b.x = FIELD_W - b.r;
-      b.vx = -Math.abs(b.vx) * WALL_BOUNCE;
+      b.vx = -Math.abs(b.vx) * WALL_BOUNCE[b.kind];
     }
   }
 
   if (b.y - b.r < 0) {
     b.y = b.r;
-    b.vy = Math.abs(b.vy) * WALL_BOUNCE;
+    b.vy = Math.abs(b.vy) * WALL_BOUNCE[b.kind];
   } else if (b.y + b.r > FIELD_H) {
     b.y = FIELD_H - b.r;
-    b.vy = -Math.abs(b.vy) * WALL_BOUNCE;
+    b.vy = -Math.abs(b.vy) * WALL_BOUNCE[b.kind];
   }
   return null;
 }
@@ -198,8 +205,8 @@ function collidePost(b: Body, p: { x: number; y: number }) {
 
   const vn = b.vx * nx + b.vy * ny;
   if (vn < 0) {
-    b.vx -= (1 + WALL_BOUNCE) * vn * nx;
-    b.vy -= (1 + WALL_BOUNCE) * vn * ny;
+    b.vx -= (1 + WALL_BOUNCE[b.kind]) * vn * nx;
+    b.vy -= (1 + WALL_BOUNCE[b.kind]) * vn * ny;
   }
 }
 
@@ -207,8 +214,7 @@ function applyFriction(b: Body, frames: number) {
   const speed = Math.hypot(b.vx, b.vy);
   if (speed === 0) return;
 
-  const friction = b.kind === 'ball' ? BALL_FRICTION : PIECE_FRICTION;
-  const newSpeed = speed * Math.pow(friction, frames) - LINEAR_DRAG * frames;
+  const newSpeed = speed * Math.pow(DRAG[b.kind], frames) - SLIDE[b.kind] * frames;
 
   if (newSpeed < STOP_SPEED) {
     b.vx = 0;

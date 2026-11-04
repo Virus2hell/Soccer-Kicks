@@ -5,7 +5,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { PuckArt } from '@/components/game/puck-art';
 import { Bar, Button, Card, Coins, COLORS, styles as ui } from '@/components/ui/kit';
 import { Split } from '@/components/ui/layout';
-import { MAX_LEVEL, STAT_INFO, puckRating, upgradeCost } from '@/game/pucks';
+import { MAX_LEVEL, MAX_NAME_LENGTH, STAT_INFO, puckRating, upgradeCost } from '@/game/pucks';
 import { STAT_KEYS, StatKey } from '@/game/types';
 import { useAuth } from '@/lib/auth';
 
@@ -49,7 +49,7 @@ export default function PuckScreen() {
             <Card>
               <Text style={ui.label}>Name</Text>
               <View style={{ gap: 8 }}>
-                <TextInput style={ui.input} value={name} onChangeText={setName} maxLength={14} />
+                <TextInput style={ui.input} value={name} onChangeText={setName} maxLength={MAX_NAME_LENGTH} />
                 <Button
                   title="Save"
                   small

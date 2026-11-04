@@ -26,7 +26,7 @@ import {
 import type { Body, BodyKind } from '@/game/physics';
 import { aimLength, effectiveness } from '@/game/pucks';
 import type { Team } from '@/game/types';
-import type { PosBuffer } from '@/lib/use-match';
+import { PosBuffer, STRIDE } from '@/lib/use-match';
 
 type Props = {
   state: MatchState;
@@ -485,14 +485,26 @@ const AnimatedBody = memo(function AnimatedBody(props: BodyProps) {
 
   const style = useAnimatedStyle(() => {
     const p = pos.value;
-    const i = index * 2;
+    const i = index * STRIDE;
     if (i + 1 >= p.cur.length) return { opacity: 0 };
-    const t = p.dur > 0 ? Math.min(1, Math.max(0, (clock.value - startAt.value) / p.dur)) : 1;
-    const hasPrev = p.prev.length === p.cur.length;
-    const fromX = hasPrev ? p.prev[i] : p.cur[i];
-    const fromY = hasPrev ? p.prev[i + 1] : p.cur[i + 1];
-    const x = fromX + (p.cur[i] - fromX) * t;
-    const y = fromY + (p.cur[i + 1] - fromY) * t;
+    const elapsed = clock.value - startAt.value;
+    let x: number;
+    let y: number;
+    if (p.dur > 0) {
+      // Online: glide from the previous server update to the newest one
+      const t = Math.min(1, Math.max(0, elapsed / p.dur));
+      const hasPrev = p.prev.length === p.cur.length;
+      const fromX = hasPrev ? p.prev[i] : p.cur[i];
+      const fromY = hasPrev ? p.prev[i + 1] : p.cur[i + 1];
+      x = fromX + (p.cur[i] - fromX) * t;
+      y = fromY + (p.cur[i + 1] - fromY) * t;
+    } else {
+      // Local: if the game loop is a little late, keep moving with the puck's
+      // velocity for up to 2 frames so motion never stutters
+      const ahead = Math.min(2, Math.max(0, elapsed / (1000 / 60)));
+      x = p.cur[i] + p.cur[i + 2] * ahead;
+      y = p.cur[i + 1] + p.cur[i + 3] * ahead;
+    }
     return {
       opacity: 1,
       transform: [

@@ -21,7 +21,7 @@ import {
   matchResultFor,
   update,
 } from '../src/game/match';
-import { MAX_LEVEL, matchReward, upgradeCost } from '../src/game/pucks';
+import { MAX_LEVEL, MAX_NAME_LENGTH, matchReward, upgradeCost } from '../src/game/pucks';
 import {
   GOAL_OPTIONS,
   MatchResult,
@@ -276,7 +276,7 @@ io.on('connection', (socket) => {
     const puck = profile.pucks.find((p) => p.id === puckId);
     const clean = String(name ?? '').trim();
     if (!puck) throw new Error('Puck not found');
-    if (clean.length < 1 || clean.length > 14) throw new Error('Name must be 1-14 characters');
+    if (clean.length < 1 || clean.length > MAX_NAME_LENGTH) throw new Error(`Name must be 1-${MAX_NAME_LENGTH} characters`);
     puck.name = clean;
     db.save();
     return { profile };

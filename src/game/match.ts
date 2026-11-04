@@ -35,7 +35,7 @@ import type { FormationId, MatchResult, MatchSettings, PuckData, StatLevels, Tea
 export const TURN_SECONDS = 15;
 export const SUB_SECONDS = 30;
 export const MAX_SUBS = 3;
-export const GOAL_PAUSE = 2.5;
+export const GOAL_PAUSE = 3;
 export const KEEPER_SECONDS = 8;
 export const KICK_SECONDS = 12;
 export const KICK_RESULT_PAUSE = 1.8;
@@ -347,8 +347,8 @@ function collisionHandler(state: MatchState): CollideFn {
     if (b.kind === 'ball' && a.kind === 'piece') state.lastTouch = a.id;
 
     // Puck hits puck: both lose health
-    if (a.kind === 'piece' && b.kind === 'piece' && impulse > 2) {
-      const damage = Math.min(8, impulse * 0.12);
+    if (a.kind === 'piece' && b.kind === 'piece' && impulse > 1) {
+      const damage = Math.min(8, impulse * 0.25);
       for (const body of [a, b]) {
         const puck = getSquadPuck(state, body.id);
         if (puck) puck.health = Math.max(0, puck.health - damage * drainMultiplier(puck.levels.stamina));
@@ -413,6 +413,8 @@ export function update(state: MatchState, frames: number, rng = Math.random) {
       break;
 
     case 'goal': {
+      // The goal already counts; let the ball bounce in the net and roll back out
+      step(state.bodies, frames, undefined, false);
       state.pause -= dt;
       if (state.pause > 0) break;
       const team = state.goalInfo!.team;
@@ -440,6 +442,7 @@ export function update(state: MatchState, frames: number, rng = Math.random) {
     }
 
     case 'so-result':
+      step(state.bodies, frames, undefined, false);
       state.pause -= dt;
       if (state.pause <= 0) nextKick(state, rng);
       break;

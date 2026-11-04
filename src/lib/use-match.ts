@@ -25,7 +25,7 @@ import type { Body } from '@/game/physics';
 import type { MatchSettings, Team } from '@/game/types';
 import { getSocket, request } from '@/lib/socket';
 
-/** Positions for the UI thread: [x0, y0, x1, y1, ...] in body order */
+/** For the UI thread: [x0, y0, vx0, vy0, x1, y1, ...] in body order */
 export type PosBuffer = {
   seq: number; // changes on every write
   prev: number[]; // where the bodies were (online: last server update)
@@ -34,7 +34,8 @@ export type PosBuffer = {
   turnFrac: number; // 1 -> 0 as the turn timer runs out
 };
 
-const pack = (bodies: Body[]) => bodies.flatMap((b) => [b.x, b.y]);
+export const STRIDE = 4;
+const pack = (bodies: Body[]) => bodies.flatMap((b) => [b.x, b.y, b.vx, b.vy]);
 
 const samePositions = (a: number[], b: number[]) =>
   a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.01);

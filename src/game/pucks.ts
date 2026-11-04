@@ -4,11 +4,12 @@ export const MAX_LEVEL = 10;
 export const MAX_HEALTH = 100;
 export const SHOT_DRAIN = 6; // health lost by the shooter on every shot
 export const STARTING_COINS = 200;
+export const MAX_NAME_LENGTH = 12;
 
 // ---- How each stat level turns into gameplay numbers ----
 
 // Fastest shot (game units per frame) at full pull
-export const maxShotSpeed = (power: number) => 32 + power * 2;
+export const maxShotSpeed = (power: number) => 12 + power * 0.45;
 
 // Random error added to a shot, in degrees (lower = more accurate)
 export const maxDeviationDeg = (accuracy: number) => 9.5 - accuracy * 0.85;
@@ -30,7 +31,7 @@ export const puckRating = (levels: StatLevels) =>
   Math.round(((levels.power + levels.accuracy + levels.aim + levels.stamina) / 4) * 10);
 
 export const STAT_INFO: Record<StatKey, { label: string; icon: string; describe: (lvl: number) => string }> = {
-  power: { label: 'Power', icon: '💥', describe: (l) => `Max shot speed ${maxShotSpeed(l)}` },
+  power: { label: 'Power', icon: '💥', describe: (l) => `Max shot speed ${maxShotSpeed(l).toFixed(1)}` },
   accuracy: { label: 'Accuracy', icon: '🎯', describe: (l) => `Shot error ±${maxDeviationDeg(l).toFixed(1)}°` },
   aim: { label: 'Aim', icon: '📏', describe: (l) => `Guide line ${aimLength(l)} long` },
   stamina: { label: 'Stamina', icon: '🔋', describe: (l) => `Health loss x${drainMultiplier(l).toFixed(2)}` },

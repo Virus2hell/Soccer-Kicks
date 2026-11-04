@@ -18,11 +18,9 @@ const STRIPES = 12;
 const INSET = 16; // painted lines sit a little inside the walls
 const LINE = 'rgba(255,255,255,0.92)';
 const LW = 5;
-const BOX_W = 170;
-const BOX_H = 360;
-const SMALL_W = 66;
-const SMALL_H = 230;
-const CIRCLE_R = 95;
+const BOX_W = 130;
+const BOX_H = 300;
+const CIRCLE_R = 92;
 
 // Same "random" grass texture every time
 function grassSpecks() {
@@ -143,11 +141,9 @@ export const Field = memo(function Field({ width, height }: { width: number; hei
 
         <Rect x={left} y={midY - BOX_H / 2} width={BOX_W} height={BOX_H} />
         <Rect x={right - BOX_W} y={midY - BOX_H / 2} width={BOX_W} height={BOX_H} />
-        <Rect x={left} y={midY - SMALL_H / 2} width={SMALL_W} height={SMALL_H} />
-        <Rect x={right - SMALL_W} y={midY - SMALL_H / 2} width={SMALL_W} height={SMALL_H} />
 
-        <Path d={`M ${left + BOX_W} ${midY - 58} A 75 75 0 0 1 ${left + BOX_W} ${midY + 58}`} />
-        <Path d={`M ${right - BOX_W} ${midY - 58} A 75 75 0 0 0 ${right - BOX_W} ${midY + 58}`} />
+        <Path d={`M ${left + BOX_W} ${midY - 50} A 62 62 0 0 1 ${left + BOX_W} ${midY + 50}`} />
+        <Path d={`M ${right - BOX_W} ${midY - 50} A 62 62 0 0 0 ${right - BOX_W} ${midY + 50}`} />
 
         <Path d={`M ${left} ${top + 24} A 24 24 0 0 0 ${left + 24} ${top}`} />
         <Path d={`M ${left} ${bottom - 24} A 24 24 0 0 1 ${left + 24} ${bottom}`} />
@@ -155,8 +151,8 @@ export const Field = memo(function Field({ width, height }: { width: number; hei
         <Path d={`M ${right} ${bottom - 24} A 24 24 0 0 0 ${right - 24} ${bottom}`} />
       </G>
       <Circle cx={midX} cy={midY} r={8} fill={LINE} />
-      <Circle cx={left + 120} cy={midY} r={6} fill={LINE} />
-      <Circle cx={right - 120} cy={midY} r={6} fill={LINE} />
+      <Circle cx={left + 95} cy={midY} r={5} fill={LINE} />
+      <Circle cx={right - 95} cy={midY} r={5} fill={LINE} />
 
       <Rect x={x0} y={y0} width={FIELD_W} height={FIELD_H} fill={`url(#${id}-vignette)`} />
 
