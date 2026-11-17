@@ -11,6 +11,16 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 ---
 
+## 📥 Download
+
+[![Download APK](https://img.shields.io/badge/Download-Android_APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://expo.dev/accounts/atharva269/projects/Soccer-Kicks/builds/b379188c-f781-4dd2-b8d8-2b45c1ff0ed1)
+
+**[⬇️ Download Soccer Pucks for Android (.apk)](https://expo.dev/accounts/atharva269/projects/Soccer-Kicks/builds/b379188c-f781-4dd2-b8d8-2b45c1ff0ed1)**
+
+> After downloading, open the file on your phone and allow **"Install unknown apps"** if Android asks.
+
+---
+
 ## 📸 Screenshots
 
 | Login | Home |
@@ -207,4 +217,3 @@ Both players register (different usernames) → one taps **Online → Create roo
 - LinkedIn: [Atharva Narvekar](https://www.linkedin.com/in/atharva-narvekar-8535862b1/)
 
 ---
-
