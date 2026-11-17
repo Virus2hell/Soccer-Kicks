@@ -23,7 +23,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Trick Shot | Aiming |
 |:---:|:---:|
-| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/shootout.jpeg" width="420" alt="Trick Shot" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/aiming.jpeg" width="420" alt="Aiming" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/shootout.png" width="420" alt="Trick Shot" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/aiming.jpeg" width="420" alt="Aiming" /> |
 
 
 | Squad & formations | Puck upgrades |
@@ -32,7 +32,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Online lobby | Profile & stats |
 |:---:|:---:|
-| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/profile-phone.jpeg" width="420" alt="Profile" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/profile-phone.png" width="420" alt="Profile" /> |
 
 ---
 
