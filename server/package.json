@@ -6,10 +6,12 @@
     "start": "tsx index.ts"
   },
   "dependencies": {
+    "pg": "^8.23.1",
     "socket.io": "^4.8.4",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0"
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1"
   }
 }

@@ -3,13 +3,14 @@
 // (src/game/match.ts), so both players always see the same game.
 //
 // Start it with:  cd server && npm install && npm start
+// Storage: Postgres (e.g. Neon) when DATABASE_URL is set, else server/data/db.json.
 
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { Server, Socket } from 'socket.io';
 
-import { Db } from './db';
+import { Db, UserRecord } from './db';
 import { isPuckColor } from '../src/game/colors';
 import { FORMATION_IDS } from '../src/game/formations';
 import {
@@ -36,7 +37,7 @@ import {
 const PORT = Number(process.env.PORT ?? 3001);
 const SEND_EVERY_MS = 33; // ~30 updates per second to the phones
 
-const db = new Db(path.join(__dirname, 'data', 'db.json'));
+let db: Db; // opened in main() below
 const httpServer = createServer((_req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Soccer Pucks server is running');
@@ -48,20 +49,22 @@ const io = new Server(httpServer, { cors: { origin: '*' } });
 // ---------------------------------------------------------------------------
 
 type Ack = (res: object) => void;
-type Handler = (payload: any) => object | void;
+type Handler = (payload: any) => object | void | Promise<object | void>;
 
 function handle(socket: Socket, event: string, fn: Handler) {
-  socket.on(event, (payload: unknown, ack?: Ack) => {
+  socket.on(event, async (payload: unknown, ack?: Ack) => {
     try {
-      const res = fn(payload ?? {});
+      const res = await fn(payload ?? {});
       ack?.({ ok: true, ...(res ?? {}) });
     } catch (e) {
+      if (!(e instanceof Error) || e.constructor !== Error) console.error(`${event} failed:`, e);
       ack?.({ ok: false, error: e instanceof Error ? e.message : 'Something went wrong' });
     }
   });
 }
 
-function applyResult(profile: Profile, result: MatchResult) {
+function applyResult(user: UserRecord, result: MatchResult) {
+  const profile = user.profile;
   const goalsFor = Math.max(0, Math.min(99, Math.floor(result.goalsFor)));
   const goalsAgainst = Math.max(0, Math.min(99, Math.floor(result.goalsAgainst)));
 
@@ -82,7 +85,7 @@ function applyResult(profile: Profile, result: MatchResult) {
 
   const reward = matchReward(!!result.won, goalsFor);
   profile.coins += reward;
-  db.save();
+  db.save(user);
   return reward;
 }
 
@@ -145,7 +148,7 @@ function snapshot(match: MatchState) {
 }
 
 function startMatch(room: Room) {
-  const profiles = room.players.map((p) => db.getUser(p.username)!.profile);
+  const profiles = room.players.map((p) => db.cachedUser(p.username)!.profile);
   const match = createMatch(room.settings, sideSetup(profiles[0]), sideSetup(profiles[1]));
   room.match = match;
   room.finished = false;
@@ -184,9 +187,9 @@ function finishMatch(room: Room) {
 
   room.players.forEach((p, i) => {
     const team = i as Team;
-    const user = db.getUser(p.username);
+    const user = db.cachedUser(p.username);
     if (!user) return;
-    const reward = applyResult(user.profile, matchResultFor(match, team));
+    const reward = applyResult(user, matchResultFor(match, team));
     io.to(p.socketId).emit('match:end', { winner: match.winner, reward });
     io.to(p.socketId).emit('profile:update', user.profile);
   });
@@ -232,39 +235,40 @@ function leaveRoom(socket: Socket) {
 io.on('connection', (socket) => {
   let username: string | null = null;
 
+  // Logged-in players are always in memory, so this is instant
   const me = () => {
-    const user = username ? db.getUser(username) : undefined;
+    const user = username ? db.cachedUser(username) : undefined;
     if (!user) throw new Error('Please log in again');
     return user;
   };
 
   // ---- Accounts ----
-  handle(socket, 'auth:register', ({ username: name, password }) => {
+  handle(socket, 'auth:register', async ({ username: name, password }) => {
     const clean = String(name ?? '').trim();
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(clean)) throw new Error('Username: 3-16 letters, numbers or _');
     if (String(password ?? '').length < 4) throw new Error('Password must be at least 4 characters');
-    const user = db.createUser(clean, String(password));
+    const user = await db.createUser(clean, String(password));
     username = user.username;
-    return { token: db.newToken(user), profile: user.profile };
+    return { token: await db.newToken(user), profile: user.profile };
   });
 
-  handle(socket, 'auth:login', ({ username: name, password }) => {
-    const user = db.getUser(String(name ?? '').trim());
+  handle(socket, 'auth:login', async ({ username: name, password }) => {
+    const user = await db.getUser(String(name ?? '').trim());
     if (!user || !db.checkPassword(user, String(password ?? ''))) throw new Error('Wrong username or password');
     username = user.username;
-    return { token: db.newToken(user), profile: user.profile };
+    return { token: await db.newToken(user), profile: user.profile };
   });
 
-  handle(socket, 'auth:token', ({ token }) => {
-    const user = db.findByToken(String(token ?? ''));
+  handle(socket, 'auth:token', async ({ token }) => {
+    const user = await db.findByToken(String(token ?? ''));
     if (!user) throw new Error('Session expired, please log in');
     username = user.username;
     return { profile: user.profile };
   });
 
-  handle(socket, 'auth:logout', ({ token }) => {
+  handle(socket, 'auth:logout', async ({ token }) => {
     leaveRoom(socket);
-    db.removeToken(String(token ?? ''));
+    await db.removeToken(String(token ?? ''));
     username = null;
   });
 
@@ -272,18 +276,20 @@ io.on('connection', (socket) => {
   handle(socket, 'profile:get', () => ({ profile: me().profile }));
 
   handle(socket, 'profile:rename', ({ puckId, name }) => {
-    const profile = me().profile;
+    const user = me();
+    const profile = user.profile;
     const puck = profile.pucks.find((p) => p.id === puckId);
     const clean = String(name ?? '').trim();
     if (!puck) throw new Error('Puck not found');
     if (clean.length < 1 || clean.length > MAX_NAME_LENGTH) throw new Error(`Name must be 1-${MAX_NAME_LENGTH} characters`);
     puck.name = clean;
-    db.save();
+    db.save(user);
     return { profile };
   });
 
   handle(socket, 'profile:upgrade', ({ puckId, stat }) => {
-    const profile = me().profile;
+    const user = me();
+    const profile = user.profile;
     const puck = profile.pucks.find((p) => p.id === puckId);
     if (!puck || !STAT_KEYS.includes(stat)) throw new Error('Invalid upgrade');
     const level = puck.levels[stat as StatKey];
@@ -292,39 +298,43 @@ io.on('connection', (socket) => {
     if (profile.coins < cost) throw new Error(`You need ${cost} coins`);
     profile.coins -= cost;
     puck.levels[stat as StatKey] = level + 1;
-    db.save();
+    db.save(user);
     return { profile };
   });
 
   handle(socket, 'profile:color', ({ color }) => {
-    const profile = me().profile;
+    const user = me();
+    const profile = user.profile;
     if (!isPuckColor(color)) throw new Error('Unknown color');
     profile.color = color;
-    db.save();
+    db.save(user);
     return { profile };
   });
 
   handle(socket, 'profile:formation', ({ formation }) => {
-    const profile = me().profile;
+    const user = me();
+    const profile = user.profile;
     if (!FORMATION_IDS.includes(formation)) throw new Error('Unknown formation');
     profile.formation = formation;
-    db.save();
+    db.save(user);
     return { profile };
   });
 
   handle(socket, 'profile:lineup', ({ lineup }) => {
-    const profile = me().profile;
+    const user = me();
+    const profile = user.profile;
     const ids = profile.pucks.map((p) => p.id).sort();
     if (!Array.isArray(lineup) || [...lineup].sort().join() !== ids.join()) throw new Error('Invalid lineup');
     profile.lineup = lineup;
-    db.save();
+    db.save(user);
     return { profile };
   });
 
   // Local (same phone) matches are played on the phone; the result is reported here
   handle(socket, 'profile:localResult', ({ result }) => {
-    const profile = me().profile;
-    const reward = applyResult(profile, result as MatchResult);
+    const user = me();
+    const profile = user.profile;
+    const reward = applyResult(user, result as MatchResult);
     return { profile, reward };
   });
 
@@ -390,13 +400,33 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => leaveRoom(socket));
 });
 
-httpServer.listen(PORT, () => {
-  const ips = Object.values(os.networkInterfaces())
-    .flat()
-    .filter((i) => i && i.family === 'IPv4' && !i.internal)
-    .map((i) => i!.address);
-  console.log(`\n⚽ Soccer Pucks server running on port ${PORT}`);
-  console.log('In the app, use one of these server addresses:');
-  for (const ip of ips) console.log(`   http://${ip}:${PORT}`);
-  console.log('');
+async function main() {
+  db = await Db.open(path.join(__dirname, 'data', 'db.json'));
+
+  httpServer.listen(PORT, () => {
+    console.log(`\n⚽ Soccer Pucks server running on port ${PORT}`);
+    if (!process.env.DATABASE_URL) {
+      const ips = Object.values(os.networkInterfaces())
+        .flat()
+        .filter((i) => i && i.family === 'IPv4' && !i.internal)
+        .map((i) => i!.address);
+      console.log('Local mode. On the same Wi-Fi, set EXPO_PUBLIC_SERVER_URL in the app to one of:');
+      for (const ip of ips) console.log(`   http://${ip}:${PORT}`);
+    }
+  });
+
+  // Render stops the old server on every deploy: save everything first
+  const shutdown = async () => {
+    console.log('Shutting down, saving data...');
+    io.close();
+    await db.close().catch((e) => console.error(e));
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+
+main().catch((e) => {
+  console.error('Server failed to start:', e);
+  process.exit(1);
 });

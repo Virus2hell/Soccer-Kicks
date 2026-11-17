@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeInDown, FadeInLeft } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,16 +10,13 @@ import { Backdrop } from '@/components/ui/layout';
 import { useAuth } from '@/lib/auth';
 
 export default function LoginScreen() {
-  const { status, login, register, serverUrl } = useAuth();
+  const { status, login, register } = useAuth();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [url, setUrl] = useState(serverUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => setUrl(serverUrl), [serverUrl]);
 
   if (status === 'loggedIn') return <Redirect href="/" />;
 
@@ -28,7 +25,7 @@ export default function LoginScreen() {
     setBusy(true);
     try {
       const action = mode === 'login' ? login : register;
-      await action(username.trim(), password, url);
+      await action(username.trim(), password);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
@@ -89,22 +86,11 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              <Text style={ui.label}>Server address</Text>
-              <TextInput
-                style={ui.input}
-                value={url}
-                onChangeText={setUrl}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                placeholder="http://192.168.x.x:3001"
-                placeholderTextColor={COLORS.muted}
-              />
-              <Text style={ui.muted}>Shown in the terminal when you start the server (npm start in the server folder).</Text>
 
               {!!error && <Text style={ui.error}>{error}</Text>}
 
               <Button title={mode === 'login' ? 'Log in' : 'Create account'} onPress={submit} loading={busy} disabled={!username || !password} />
+              {busy && <Text style={[ui.muted, { textAlign: 'center' }]}>Connecting… the first login can take up to a minute while the server wakes up.</Text>}
             </Card>
           </Animated.View>
         </ScrollView>

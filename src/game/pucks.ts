@@ -12,7 +12,12 @@ export const MAX_NAME_LENGTH = 12;
 export const maxShotSpeed = (power: number) => 12 + power * 0.45;
 
 // Random error added to a shot, in degrees (lower = more accurate)
-export const maxDeviationDeg = (accuracy: number) => 9.5 - accuracy * 0.85;
+// A fresh puck is almost perfectly accurate; the error grows as it gets tired.
+// Higher Accuracy keeps it tighter, both fresh and tired.
+export const shotErrorDeg = (accuracy: number, health: number) => {
+  const tired = 1 - Math.max(0, Math.min(1, health / MAX_HEALTH)); // 0 = fresh, 1 = exhausted
+  return 0.6 - accuracy * 0.05 + (6.5 - accuracy * 0.5) * tired * tired;
+};
 
 // Length of the aiming guide line (game units)
 export const aimLength = (aim: number) => 90 + aim * 40;
@@ -32,7 +37,11 @@ export const puckRating = (levels: StatLevels) =>
 
 export const STAT_INFO: Record<StatKey, { label: string; icon: string; describe: (lvl: number) => string }> = {
   power: { label: 'Power', icon: '💥', describe: (l) => `Max shot speed ${maxShotSpeed(l).toFixed(1)}` },
-  accuracy: { label: 'Accuracy', icon: '🎯', describe: (l) => `Shot error ±${maxDeviationDeg(l).toFixed(1)}°` },
+  accuracy: {
+    label: 'Accuracy',
+    icon: '🎯',
+    describe: (l) => `Error ±${shotErrorDeg(l, MAX_HEALTH).toFixed(1)}° fresh, ±${shotErrorDeg(l, 0).toFixed(1)}° tired`,
+  },
   aim: { label: 'Aim', icon: '📏', describe: (l) => `Guide line ${aimLength(l)} long` },
   stamina: { label: 'Stamina', icon: '🔋', describe: (l) => `Health loss x${drainMultiplier(l).toFixed(2)}` },
 };

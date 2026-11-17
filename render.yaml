@@ -1,0 +1,16 @@
+# Render Blueprint: deploys the game server (server/ folder) as a web service.
+# Render dashboard -> New -> Blueprint -> pick this repository.
+services:
+  - type: web
+    name: soccer-pucks-server
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false # paste your Neon connection string in the Render dashboard

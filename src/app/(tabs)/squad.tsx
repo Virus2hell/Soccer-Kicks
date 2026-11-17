@@ -1,20 +1,24 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormationPreview } from '@/components/game/formation-preview';
 import { PuckArt } from '@/components/game/puck-art';
 import { ColorPicker } from '@/components/ui/color-picker';
 import { Card, Chip, Coins, COLORS, styles as ui } from '@/components/ui/kit';
-import { Split } from '@/components/ui/layout';
+import { Backdrop } from '@/components/ui/layout';
 import type { PuckColorId } from '@/game/colors';
 import { FORMATIONS, FORMATION_IDS } from '@/game/formations';
-import { puckRating } from '@/game/pucks';
+import { MAX_NAME_LENGTH, puckRating } from '@/game/pucks';
 import type { FormationId, PuckData } from '@/game/types';
 import { useAuth } from '@/lib/auth';
 
+const CARDS_PER_ROW = 5;
+
 export default function SquadScreen() {
   const { profile, call } = useAuth();
+  const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState('');
   if (!profile) return null;
@@ -22,6 +26,8 @@ export default function SquadScreen() {
   const byId = new Map(profile.pucks.map((p) => [p.id, p]));
   const lineup = profile.lineup.map((id) => byId.get(id)!).filter(Boolean);
   const slots = FORMATIONS[profile.formation].slots;
+  const starters = lineup.slice(0, 5);
+  const bench = lineup.slice(5);
 
   const run = (p: Promise<unknown>) => {
     setError('');
@@ -43,91 +49,161 @@ export default function SquadScreen() {
     run(call('profile:lineup', { lineup: next }));
   };
 
-  return (
-    <Split
-      left={
-        <>
-          <View style={[ui.row, { justifyContent: 'space-between' }]}>
-            <Text style={styles.title}>Squad</Text>
-            <Coins amount={profile.coins} />
-          </View>
+  const renderRow = (pucks: PuckData[], badge: (i: number) => string) => (
+    <View style={styles.cardRow}>
+      {pucks.map((p, i) => (
+        <PuckCard key={p.id} puck={p} color={profile.color} badge={badge(i)} selected={selected === p.id} onPress={() => tap(p.id)} />
+      ))}
+      {/* empty spacers keep bench cards the same width as starter cards */}
+      {Array.from({ length: Math.max(0, CARDS_PER_ROW - pucks.length) }, (_, i) => (
+        <View key={`spacer${i}`} style={styles.spacer} />
+      ))}
+    </View>
+  );
 
-          <Card>
+  return (
+    <View style={[ui.screen, { paddingLeft: insets.left, paddingRight: insets.right }]}>
+      <Backdrop />
+      <ScrollView contentContainerStyle={ui.scroll}>
+        <View style={[ui.row, { justifyContent: 'space-between' }]}>
+          <Text style={styles.title}>Squad</Text>
+          <Coins amount={profile.coins} />
+        </View>
+
+        <View style={styles.topRow}>
+          <Card style={{ flex: 1.15 }}>
             <Text style={ui.sectionTitle}>Formation</Text>
             <View style={[ui.row, { flexWrap: 'wrap', gap: 6 }]}>
               {FORMATION_IDS.map((id) => (
                 <Chip key={id} label={FORMATIONS[id].label} selected={profile.formation === id} onPress={() => setFormation(id)} />
               ))}
             </View>
-            <FormationPreview formation={profile.formation} numbers={lineup.slice(0, 5).map((p) => p.number)} color={profile.color} />
+            <FormationPreview formation={profile.formation} numbers={starters.map((p) => p.number)} color={profile.color} />
           </Card>
 
-          <Card>
+          <Card style={{ flex: 1 }}>
             <Text style={ui.sectionTitle}>Puck color</Text>
             <ColorPicker value={profile.color} onChange={setColor} />
           </Card>
-        </>
-      }
-      right={
+        </View>
+
         <Card>
-          <Text style={ui.sectionTitle}>Lineup</Text>
-          <Text style={ui.muted}>
-            {selected ? 'Now tap the puck to swap with' : 'Tap two pucks to swap them. Top 5 start, the rest are subs.'}
-          </Text>
+          <View style={[ui.row, { justifyContent: 'space-between' }]}>
+            <Text style={ui.sectionTitle}>Lineup</Text>
+            <Text style={[ui.muted, selected && { color: COLORS.gold, fontWeight: '800' }]}>
+              {selected ? 'Now tap the puck to swap with' : 'Tap two pucks to swap them'}
+            </Text>
+          </View>
           {!!error && <Text style={ui.error}>{error}</Text>}
 
           <Text style={styles.group}>STARTERS</Text>
-          {lineup.slice(0, 5).map((p, i) => (
-            <PuckRow key={p.id} puck={p} color={profile.color} badge={slots[i].role} selected={selected === p.id} onPress={() => tap(p.id)} />
-          ))}
+          {renderRow(starters, (i) => slots[i].role)}
 
           <Text style={styles.group}>BENCH</Text>
-          {lineup.slice(5).map((p) => (
-            <PuckRow key={p.id} puck={p} color={profile.color} badge="SUB" selected={selected === p.id} onPress={() => tap(p.id)} />
-          ))}
+          {renderRow(bench, () => 'SUB')}
         </Card>
-      }
-    />
+      </ScrollView>
+    </View>
   );
 }
 
-type PuckRowProps = { puck: PuckData; color: PuckColorId; badge: string; selected: boolean; onPress: () => void };
+type PuckCardProps = { puck: PuckData; color: PuckColorId; badge: string; selected: boolean; onPress: () => void };
 
-function PuckRow({ puck, color, badge, selected, onPress }: PuckRowProps) {
+function PuckCard({ puck, color, badge, selected, onPress }: PuckCardProps) {
   const l = puck.levels;
   return (
-    <Pressable onPress={onPress} style={[styles.row, selected && { borderColor: COLORS.gold }]}>
-      <Text style={styles.badge}>{badge}</Text>
-      <PuckArt size={46} color={color} number={puck.number} highlight={selected ? 'selected' : 'none'} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name}>{puck.name}</Text>
-        <Text style={ui.muted}>
-          💥{l.power}  🎯{l.accuracy}  📏{l.aim}  🔋{l.stamina}  ·  ⚽ {puck.goals}
-        </Text>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, selected && styles.cardSelected, pressed && { opacity: 0.85 }]}>
+      <View style={styles.cardTop}>
+        <Text style={[styles.badge, badge === 'SUB' && { backgroundColor: COLORS.border }]}>{badge}</Text>
+        <Text style={styles.rating}>{puckRating(l)}</Text>
       </View>
-      <Text style={styles.rating}>{puckRating(l)}</Text>
-      <Pressable hitSlop={10} onPress={() => router.push({ pathname: '/puck/[id]', params: { id: puck.id } })} style={styles.details}>
-        <Text style={{ color: COLORS.text, fontWeight: '900' }}>UPGRADE ›</Text>
+
+      <PuckArt size={58} color={color} number={puck.number} highlight={selected ? 'selected' : 'none'} />
+      <Text style={styles.name} numberOfLines={1}>
+        {puck.name.slice(0, MAX_NAME_LENGTH)}
+      </Text>
+
+      <View style={styles.stats}>
+        <StatChip icon="💥" value={l.power} />
+        <StatChip icon="🎯" value={l.accuracy} />
+        <StatChip icon="📏" value={l.aim} />
+        <StatChip icon="🔋" value={l.stamina} />
+      </View>
+      <Text style={ui.muted}>⚽ {puck.goals} goals</Text>
+
+      <Pressable
+        hitSlop={6}
+        onPress={() => router.push({ pathname: '/puck/[id]', params: { id: puck.id } })}
+        style={({ pressed }) => [styles.upgrade, pressed && { opacity: 0.8 }]}>
+        <Text style={styles.upgradeText}>UPGRADE</Text>
       </Pressable>
     </Pressable>
   );
 }
 
+function StatChip({ icon, value }: { icon: string; value: number }) {
+  return (
+    <View style={styles.statChip}>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 28, fontWeight: '900' },
-  group: { color: COLORS.muted, fontSize: 11, fontWeight: '900', marginTop: 6 },
-  row: {
-    flexDirection: 'row',
+  topRow: { flexDirection: 'row', gap: 14, alignItems: 'stretch' },
+  group: { color: COLORS.muted, fontSize: 11, fontWeight: '900', marginTop: 4 },
+  cardRow: { flexDirection: 'row', gap: 10 },
+  spacer: { flex: 1 },
+  card: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
-    gap: 10,
-    padding: 8,
-    borderRadius: 14,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 16,
     backgroundColor: COLORS.cardLight,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  badge: { color: COLORS.muted, fontSize: 10, fontWeight: '900', width: 30 },
-  name: { color: COLORS.text, fontWeight: '800', fontSize: 15 },
-  rating: { color: COLORS.gold, fontWeight: '900', fontSize: 18 },
-  details: { paddingHorizontal: 10, height: 32, borderRadius: 16, backgroundColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  cardSelected: { borderColor: COLORS.gold, backgroundColor: '#3b2f0566' },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'stretch' },
+  badge: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '900',
+    backgroundColor: COLORS.accentDark,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  rating: { color: COLORS.gold, fontWeight: '900', fontSize: 17 },
+  name: { color: COLORS.text, fontWeight: '900', fontSize: 15, alignSelf: 'stretch', textAlign: 'center' },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 4, alignSelf: 'stretch' },
+  statChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    width: '46%',
+    justifyContent: 'center',
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    paddingVertical: 3,
+  },
+  statIcon: { fontSize: 12 },
+  statValue: { color: COLORS.text, fontWeight: '900', fontSize: 13 },
+  upgrade: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: COLORS.accent,
+    marginTop: 2,
+  },
+  upgradeText: { color: '#04140a', fontWeight: '900', fontSize: 12, letterSpacing: 0.5 },
 });

@@ -13,7 +13,7 @@ import { useAuth } from '@/lib/auth';
 const COLUMNS = ['Goals', 'Shots', 'Apps', 'OVR'] as const;
 
 export default function ProfileScreen() {
-  const { profile, logout, serverUrl } = useAuth();
+  const { profile, logout } = useAuth();
   const insets = useSafeAreaInsets();
   if (!profile) return null;
 
@@ -91,7 +91,7 @@ export default function ProfileScreen() {
 
         <Card style={[ui.row, { justifyContent: 'space-between' }]}>
           <Text style={[ui.muted, { flex: 1 }]} numberOfLines={1}>
-            Server: {serverUrl}
+            Logged in as {profile.username}
           </Text>
           <Button title="Log out" variant="danger" small onPress={logout} style={{ minWidth: 120 }} />
         </Card>

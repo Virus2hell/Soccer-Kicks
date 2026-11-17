@@ -5,22 +5,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import type { Profile } from '@/game/types';
+import { SERVER_URL, WAKE_UP_TIMEOUT_MS } from '@/lib/config';
 import { connect, request } from '@/lib/socket';
 
-// Your computer's address on the Wi-Fi (shown when you start the server)
-export const DEFAULT_SERVER_URL = 'http://192.168.29.44:3001';
-
 const TOKEN_KEY = 'auth-token';
-const URL_KEY = 'server-url';
 
 type Status = 'loading' | 'loggedOut' | 'loggedIn';
 
 type AuthContextValue = {
   status: Status;
   profile: Profile | null;
-  serverUrl: string;
-  login: (username: string, password: string, serverUrl: string) => Promise<void>;
-  register: (username: string, password: string, serverUrl: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Calls a profile:* event on the server and stores the updated profile */
   call: <T extends object>(event: string, payload?: object) => Promise<T & { profile?: Profile }>;
@@ -31,12 +27,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const tokenRef = useRef<string | null>(null);
 
   // Connects to the server and re-authenticates after every reconnect
-  const attach = useCallback((url: string) => {
-    const socket = connect(url);
+  const attach = useCallback(() => {
+    const socket = connect(SERVER_URL);
     socket.off('connect').on('connect', () => {
       const token = tokenRef.current;
       if (!token) return;
@@ -50,20 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // On app start: try the saved login
   useEffect(() => {
     (async () => {
-      const [savedUrl, token] = await Promise.all([
-        AsyncStorage.getItem(URL_KEY).catch(() => null),
-        AsyncStorage.getItem(TOKEN_KEY).catch(() => null),
-      ]);
-      const url = savedUrl || DEFAULT_SERVER_URL;
-      setServerUrl(url);
+      const token = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
       if (!token) {
         setStatus('loggedOut');
         return;
       }
       tokenRef.current = token;
-      attach(url);
+      attach();
       try {
-        const res = await request<{ profile: Profile }>('auth:token', { token });
+        const res = await request<{ profile: Profile }>('auth:token', { token }, WAKE_UP_TIMEOUT_MS);
         setProfile(res.profile);
         setStatus('loggedIn');
       } catch {
@@ -73,16 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [attach]);
 
   const signIn = useCallback(
-    async (event: 'auth:login' | 'auth:register', username: string, password: string, url: string) => {
-      const cleanUrl = url.trim().replace(/\/+$/, '');
-      attach(cleanUrl);
-      const res = await request<{ token: string; profile: Profile }>(event, { username, password });
+    async (event: 'auth:login' | 'auth:register', username: string, password: string) => {
+      attach();
+      const res = await request<{ token: string; profile: Profile }>(event, { username, password }, WAKE_UP_TIMEOUT_MS);
       tokenRef.current = res.token;
-      await AsyncStorage.multiSet([
-        [TOKEN_KEY, res.token],
-        [URL_KEY, cleanUrl],
-      ]);
-      setServerUrl(cleanUrl);
+      await AsyncStorage.setItem(TOKEN_KEY, res.token);
       setProfile(res.profile);
       setStatus('loggedIn');
     },
@@ -106,9 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     status,
     profile,
-    serverUrl,
-    login: (u, p, url) => signIn('auth:login', u, p, url),
-    register: (u, p, url) => signIn('auth:register', u, p, url),
+    login: (u, p) => signIn('auth:login', u, p),
+    register: (u, p) => signIn('auth:register', u, p),
     logout,
     call,
   };

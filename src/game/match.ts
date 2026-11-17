@@ -27,7 +27,7 @@ import {
   SHOT_DRAIN,
   drainMultiplier,
   effectiveness,
-  maxDeviationDeg,
+  shotErrorDeg,
   maxShotSpeed,
 } from './pucks';
 import type { FormationId, MatchResult, MatchSettings, PuckData, StatLevels, Team } from './types';
@@ -325,7 +325,7 @@ function shoot(state: MatchState, team: Team, pieceId: string, dx: number, dy: n
   const speed = maxShotSpeed(puck.levels.power) * eff * pull;
 
   // Accuracy: a tired / low-accuracy puck adds random error to the angle
-  const maxDev = Math.min(15, maxDeviationDeg(puck.levels.accuracy) / eff) * (0.4 + 0.6 * pull);
+  const maxDev = shotErrorDeg(puck.levels.accuracy, puck.health) * (0.5 + 0.5 * pull);
   const angle = Math.atan2(dy, dx) + ((rng() * 2 - 1) * maxDev * Math.PI) / 180;
 
   piece.vx = Math.cos(angle) * speed;

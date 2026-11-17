@@ -110,7 +110,7 @@ export default function OnlineScreen() {
             <Button title="Join" onPress={() => run('join', 'room:join', { code })} disabled={code.length !== 4} loading={busy === 'join'} />
           </Card>
           {!!error && <Text style={ui.error}>{error}</Text>}
-          <Text style={ui.muted}>Both phones must reach the same server (same Wi-Fi, or a server hosted online).</Text>
+          <Text style={ui.muted}>Play with anyone, anywhere: share the 4-letter code with your friend.</Text>
         </>
       }
     />
