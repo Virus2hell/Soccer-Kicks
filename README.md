@@ -8,42 +8,31 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
 ![Socket.IO](https://img.shields.io/badge/Socket.IO-4-010101?logo=socketdotio&logoColor=white)
 ![Reanimated](https://img.shields.io/badge/Reanimated-4-6B52AE)
-![Render](https://img.shields.io/badge/Server-Render-46E3B7?logo=render&logoColor=black)
-![Neon](https://img.shields.io/badge/DB-Neon_Postgres-00E599?logo=postgresql&logoColor=black)
 
 ---
 
 ## 📸 Screenshots
 
-<!--
-  HOW TO ADD YOUR PHOTOS:
-  1. Create a folder called  docs/screenshots  in the project root.
-  2. Put your images in it with the file names used below (or change the names here).
-  3. Commit and push — GitHub shows them automatically.
--->
-
 | Login | Home |
 |:---:|:---:|
-| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="docs/screenshots/home.png" width="420" alt="Home screen" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/login.png" width="420" alt="Login screen" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/home.png" width="420" alt="Home screen" /> |
 
-| Match | Aiming a shot |
+| Match | Substitutions |
 |:---:|:---:|
-| <img src="docs/screenshots/match.jpeg" width="420" alt="Match" /> | <img src="docs/screenshots/aiming.jpeg" width="420" alt="Aiming" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/match.jpeg" width="420" alt="Match" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/substitution.jpeg" width="420" alt="Substitution" /> |
 
-| Substitutions | Trick-shot shootout |
+| Trick Shot | Aiming |
 |:---:|:---:|
-| <img src="docs/screenshots/substitution.jpeg" width="420" alt="Substitution panel" /> | <img src="docs/screenshots/shootout.png" width="420" alt="Trick-shot shootout" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/shootout.jpeg" width="420" alt="Trick Shot" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/aiming.jpeg" width="420" alt="Aiming" /> |
+
 
 | Squad & formations | Puck upgrades |
 |:---:|:---:|
-| <img src="docs/screenshots/squad-formation.jpeg" width="420" alt="Squad screen" /> | <img src="docs/screenshots/puck-upgrade.jpeg" width="420" alt="Puck upgrades" /> |
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/squad-formation.jpeg" width="420" alt="Squad screen" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/puck-upgrade.jpeg" width="420" alt="Puck upgrades" /> |
 
 | Online lobby | Profile & stats |
 |:---:|:---:|
-| <img src="docs/screenshots/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="docs/screenshots/profile.png" width="420" alt="Profile" /> |
-
-<!-- Optional: a short gameplay GIF -->
-<!-- <p align="center"><img src="docs/screenshots/gameplay.gif" width="700" alt="Gameplay" /></p> -->
+| <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/online-lobby.jpeg" width="420" alt="Online lobby" /> | <img src="https://github.com/Virus2hell/Soccer-Kicks/blob/main/docs/profile-phone.jpeg" width="420" alt="Profile" /> |
 
 ---
 
@@ -70,7 +59,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 ### 🌐 Multiplayer
 - **Local 1v1** — two players, one phone
-- **Online 1v1** — create a room, share the 4-letter code, play from anywhere (hosted server)
+- **Online 1v1** — create a room, share the 4-letter code, play
 - **Server-authoritative** — the server runs every online match with the same rules code as the app, so both players always see the same game and nobody can cheat
 - ~30 state updates per second, smoothly interpolated on the device
 - Leaving mid-match counts as a forfeit
@@ -98,9 +87,7 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 | Graphics | react-native-svg |
 | State | React Context (auth), custom hooks, refs for the game loop |
 | Storage | AsyncStorage (login token) |
-| Server | Node.js, Socket.IO, scrypt hashing — hosted on **Render** |
-| Database | **Neon** (serverless Postgres) via `pg`; JSON file fallback for local dev |
-| Builds | Expo EAS (shareable Android APK) |
+| Server | Node.js, Socket.IO, JSON-file database, scrypt hashing |
 | Architecture | One shared TypeScript rules engine used by both the app and the server |
 
 ---
@@ -135,12 +122,9 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 ```
 HelloWorld/
 ├── app.json
-├── eas.json                    # APK / Play Store build profiles
-├── render.yaml                 # Render deployment (Blueprint)
-├── .env                        # EXPO_PUBLIC_SERVER_URL
-├── server/                     # Game server (Node + Socket.IO), hosted on Render
+├── server/                     # Game server (Node + Socket.IO)
 │   ├── index.ts                # accounts, profiles, rooms, online matches
-│   ├── db.ts                   # Neon Postgres (or local JSON file without DATABASE_URL)
+│   ├── db.ts                   # JSON-file database (server/data/db.json)
 │   └── package.json
 └── src/
     ├── app/                    # Screens (Expo Router)
@@ -162,7 +146,6 @@ HelloWorld/
     │   ├── colors.ts
     │   └── types.ts
     └── lib/
-        ├── config.ts           # server URL (from .env)
         ├── auth.tsx            # login state (React Context)
         ├── socket.ts           # Socket.IO connection
         └── use-match.ts        # local + online match hooks
@@ -172,25 +155,37 @@ HelloWorld/
 
 ## 🚀 Getting started
 
-The game server runs on **Render**, accounts and stats are stored in **Neon Postgres**, and players install an **APK** built with Expo EAS.
-👉 Full step-by-step guide: **[DEPLOY.md](DEPLOY.md)**
+### Prerequisites
+- [Node.js](https://nodejs.org/) 18+
+- The **Expo Go** app on your phone
+- Phone and computer on the **same Wi-Fi**
 
-### Quick version
-1. **Neon:** create a project and copy the connection string.
-2. **Render:** New → Blueprint → this repo (uses `render.yaml`), then paste the Neon string as `DATABASE_URL`.
-3. **App:** create `.env` with your Render URL:
-   ```
-   EXPO_PUBLIC_SERVER_URL=https://<your-service>.onrender.com
-   ```
-4. Run it:
-   ```bash
-   npm install
-   npx expo install expo-screen-orientation react-native-svg socket.io-client @react-native-async-storage/async-storage
-   npx expo start -c
-   ```
-5. **Share it:** `eas build --platform android --profile preview` gives you an APK download link.
+### 1. Install the app
+```bash
+git clone <your-repo-url>
+cd HelloWorld
+npm install
+npx expo install expo-screen-orientation react-native-svg socket.io-client @react-native-async-storage/async-storage
+```
 
-> On Render's free plan the server sleeps after 15 minutes with no players; the first login can take up to a minute.
+### 2. Start the game server
+```bash
+cd server
+npm install
+npm start
+```
+The terminal prints the address to use in the app, e.g. `http://192.168.1.10:3001`.
+> On Windows, click **Allow** if the firewall asks about Node.js.
+
+### 3. Start the app
+```bash
+# in the project root
+npx expo start -c
+```
+Scan the QR code with Expo Go, **Register**, and enter the server address from step 2.
+
+### 4. Play online
+Both players register (different usernames) → one taps **Online → Create room** → the other joins with the 4-letter code → host taps **Start match**.
 
 ---
 
@@ -208,9 +203,8 @@ The game server runs on **Render**, accounts and stats are stored in **Neon Post
 
 **Atharva Narvekar**
 <!-- Add your links -->
-- GitHub: [@your-username](https://github.com/your-username)
-- LinkedIn: [your-profile](https://linkedin.com/in/your-profile)
+- GitHub: [@Virus2hell](https://github.com/Virus2hell)
+- LinkedIn: [Atharva Narvekar](https://www.linkedin.com/in/atharva-narvekar-8535862b1/)
 
 ---
 
-<p align="center">Made with ⚽ and React Native</p>
