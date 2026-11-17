@@ -24,11 +24,11 @@ Pull back a puck, let it fly, bank the ball off the walls and score — against 
 
 | Login | Home |
 |:---:|:---:|
-| <img src="docs/screenshots/login.png" width="420" alt="Login screen" /> | <img src="docs/screenshots/home.png" width="420" alt="Home screen" /> |
+| <img src="docs/screenshots/login-screen.jpeg" width="420" alt="Login screen" /> | <img src="docs/screenshots/home-screen.jpeg" width="420" alt="Home screen" /> |
 
 | Match | Aiming a shot |
 |:---:|:---:|
-| <img src="docs/screenshots/match.png" width="420" alt="Match" /> | <img src="docs/screenshots/aim.png" width="420" alt="Aiming" /> |
+| <img src="docs/screenshots/match.jpeg" width="420" alt="Match" /> | <img src="docs/screenshots/aim.png" width="420" alt="Aiming" /> |
 
 | Substitutions | Trick-shot shootout |
 |:---:|:---:|
@@ -201,16 +201,6 @@ The game server runs on **Render**, accounts and stats are stored in **Neon Post
 3. Watch the **health ring** — tired pucks are weaker. Tap **SUB** to swap them (3 per match).
 4. Win coins and **upgrade** your pucks in the Squad tab.
 5. Draw at full time? Win the **trick-shot shootout**.
-
----
-
-## 🗺️ Roadmap
-- [x] Host the server online (Render + Neon) so anyone can play over mobile data
-- [ ] Publish on the Google Play Store
-- [ ] Sound effects and haptics
-- [ ] Single-player mode vs. AI
-- [ ] Leaderboards and friends list
-- [ ] Unlockable puck designs
 
 ---
 

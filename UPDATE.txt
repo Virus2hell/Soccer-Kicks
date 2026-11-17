@@ -1,7 +1,0 @@
-SOCCER PUCKS v5 - UPDATE STEPS
-==============================
-1) In HelloWorld: delete the old "src" folder, and delete server/index.ts and server/db.ts.
-2) Copy everything from this zip into HelloWorld/ (choose Replace):
-   src/, server/, tsconfig.json, render.yaml, eas.json, .env.example, README.md, DEPLOY.md
-3) Install the new server package:   cd server  ->  npm install
-4) Follow DEPLOY.md (Neon -> GitHub -> Render -> .env -> APK).
